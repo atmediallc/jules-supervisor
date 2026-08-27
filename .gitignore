@@ -1,3 +1,59 @@
+node_modules
+.next
+.astro
+tsconfig.tsbuildinfo
+.turbo
+dist
+next-env.d.ts
+.codacy
+
+#Hidden files and directories
+.vscode
+.claude
+.antigravitycli
+.antifacts
+.codex
+.cursor
+.qodo
+.tmp
+.github/agents/
+
+# Secrets and local runtime configuration
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!.env.*.example
+!**/.env.example
+!**/.env.*.example
+
+# Local key and certificate artifacts
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+/logs/
+package-lock.json
+yarn.lock
+tmp/
+tmp/runtime-chrome/
+tmp/runtime-logs/
+playwright-report/
+test-results/
+apps/trader/playwright-report/
+apps/trader/test-results/
+
+# Block root-level temp/scratch files
+/tmp_*
+/temp.*
+/test_*.ts
+/test_*.js
+
+# Backup artifacts
+*.orig
 
 
 #Ignore vscode AI rules

@@ -1,0 +1,33 @@
+{
+  "name": "@jules/worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@jules/ai": "workspace:*",
+    "@jules/config": "workspace:*",
+    "@jules/core": "workspace:*",
+    "@jules/db": "workspace:*",
+    "@jules/jules-client": "workspace:*",
+    "@jules/observability": "workspace:*",
+    "@jules/policy": "workspace:*",
+    "@jules/shared": "workspace:*",
+    "bullmq": "^5.41.6",
+    "ioredis": "^5.6.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}

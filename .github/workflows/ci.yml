@@ -1,0 +1,103 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Lint, Typecheck, Test, Build & Audit
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: jules_user
+          POSTGRES_PASSWORD: jules_password
+          POSTGRES_DB: jules_supervisor
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.20.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies (Frozen Lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Check Code Formatting
+        run: pnpm format:check
+
+      - name: Static Analysis & Lint (Zero Warnings Enforced)
+        run: pnpm lint
+
+      - name: Workspace Typecheck
+        run: pnpm typecheck
+
+      - name: Hermetic Unit Test Suite
+        run: pnpm test:unit
+        env:
+          SUPERVISOR_MODE: DRY_RUN
+
+      - name: Run Database Migrations
+        run: pnpm --filter @jules/db db:migrate
+        env:
+          DATABASE_URL: postgresql://jules_user:jules_password@localhost:5433/jules_supervisor?sslmode=disable
+
+      - name: Real Services Integration Test Suite
+        run: pnpm test:integration
+        env:
+          DATABASE_URL: postgresql://jules_user:jules_password@localhost:5433/jules_supervisor?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+          SUPERVISOR_MODE: DRY_RUN
+
+      - name: Production Build
+        run: pnpm build
+
+      - name: Install Playwright Browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run E2E Browser Test Suite
+        run: pnpm test:e2e
+        env:
+          DATABASE_URL: postgresql://jules_user:jules_password@localhost:5433/jules_supervisor?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+          SUPERVISOR_MODE: DRY_RUN
+
+      - name: Validate Docker Compose Configuration
+        run: docker compose config
+
+      - name: Build Docker Container Images
+        run: docker compose build

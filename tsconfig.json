@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext"
+  },
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/config" },
+    { "path": "./packages/core" },
+    { "path": "./packages/observability" },
+    { "path": "./packages/db" },
+    { "path": "./packages/jules-client" },
+    { "path": "./packages/ai" },
+    { "path": "./packages/policy" },
+    { "path": "./packages/test-utils" },
+    { "path": "./apps/worker" }
+  ],
+  "files": []
+}

@@ -1,0 +1,38 @@
+{
+  "name": "jules-supervisor-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "eslint . --max-warnings=0",
+    "format:check": "prettier --check .",
+    "format": "prettier --write .",
+    "typecheck": "turbo run typecheck",
+    "test": "vitest run",
+    "test:unit": "vitest run --exclude 'tests/integration/**'",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "playwright test",
+    "db:migrate": "tsx packages/db/src/migrate.ts",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^22.13.9",
+    "@types/pg": "^8.23.1",
+    "bullmq": "^5.81.3",
+    "eslint": "^10.9.1",
+    "ioredis": "^5.11.1",
+    "pg": "^8.23.0",
+    "prettier": "^3.9.6",
+    "turbo": "^2.4.4",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^3.0.7"
+  },
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

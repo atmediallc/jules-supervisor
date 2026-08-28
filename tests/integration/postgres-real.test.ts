@@ -1,0 +1,276 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  getDatabase,
+  closeDatabase,
+  SessionRepository,
+  ActivityRepository,
+  DecisionRepository,
+  ApprovalRepository,
+  AuditRepository,
+  sql,
+} from "@jules/db";
+
+const TEST_DB_URL =
+  process.env["DATABASE_URL"] ||
+  "postgresql://jules_user:jules_password@127.0.0.1:5439/jules_supervisor?sslmode=disable";
+
+describe("Real PostgreSQL 16 & Drizzle Schema Integration", () => {
+  let db: ReturnType<typeof getDatabase>;
+  let sessionRepo: SessionRepository;
+  let activityRepo: ActivityRepository;
+  let decisionRepo: DecisionRepository;
+  let approvalRepo: ApprovalRepository;
+  let auditRepo: AuditRepository;
+
+  beforeAll(async () => {
+    db = getDatabase(TEST_DB_URL);
+    sessionRepo = new SessionRepository(db);
+    activityRepo = new ActivityRepository(db);
+    decisionRepo = new DecisionRepository(db);
+    approvalRepo = new ApprovalRepository(db);
+    auditRepo = new AuditRepository(db);
+  });
+
+  afterAll(async () => {
+    await closeDatabase();
+  });
+
+  it("proves PostgreSQL 16 database connection and schema tables existence", async () => {
+    const res = await db.execute(sql`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+    `);
+    const tableNames = (res.rows as Array<{ table_name: string }>).map((r) => r.table_name);
+
+    expect(tableNames).toContain("sessions");
+    expect(tableNames).toContain("activities");
+    expect(tableNames).toContain("decisions");
+    expect(tableNames).toContain("approval_requests");
+    expect(tableNames).toContain("audit_events");
+    expect(tableNames).toContain("policies");
+    expect(tableNames).toContain("sync_checkpoints");
+
+    // Check unique index on decisions.idempotency_key
+    const indexRes = await db.execute(sql`
+      SELECT indexname 
+      FROM pg_indexes 
+      WHERE tablename = 'decisions'
+    `);
+    const indexNames = (indexRes.rows as Array<{ indexname: string }>).map((r) => r.indexname);
+    expect(indexNames).toContain("uniq_decisions_idempotency");
+  });
+
+  it("persists sessions and activities with foreign key integrity", async () => {
+    const sessionId = `ses_pg_${Date.now()}`;
+    const activityId = `act_pg_${Date.now()}`;
+
+    // 1. Create Session
+    const session = await sessionRepo.upsert({
+      id: sessionId,
+      name: "PostgreSQL Real Test",
+      repository: "octocat/real-pg-repo",
+      branch: "main",
+      prompt: "Test database real persistence",
+      state: "AWAITING_USER_INPUT",
+      supervisorStatus: "IDLE",
+    });
+    expect(session.id).toBe(sessionId);
+
+    // 2. Create Activity referencing Session
+    const activity = await activityRepo.create({
+      id: activityId,
+      sessionId,
+      type: "AGENT_MESSAGE",
+      content: "Do you prefer option A or option B?",
+      rawPayload: { type: "AGENT_MESSAGE", text: "Do you prefer option A or option B?" },
+    });
+    expect(activity.id).toBe(activityId);
+    expect(activity.sessionId).toBe(sessionId);
+
+    // 3. Verify querying by session
+    const fetchedActivities = await activityRepo.listBySession(sessionId);
+    expect(fetchedActivities.length).toBeGreaterThanOrEqual(1);
+    expect(fetchedActivities.some((a) => a.id === activityId)).toBe(true);
+  });
+
+  it("strictly rejects duplicate decisions.idempotency_key via PostgreSQL unique constraint", async () => {
+    const sessionId = `ses_idem_${Date.now()}`;
+    const activityId = `act_idem_${Date.now()}`;
+    const idempotencyKey = `idem_key_${Date.now()}`;
+
+    await sessionRepo.upsert({
+      id: sessionId,
+      name: "Idempotency Test",
+      repository: "octocat/idem-repo",
+      prompt: "Idempotency test",
+      state: "AWAITING_USER_INPUT",
+    });
+
+    await activityRepo.create({
+      id: activityId,
+      sessionId,
+      type: "AGENT_MESSAGE",
+      content: "Plan generated",
+      rawPayload: {},
+    });
+
+    // First decision insert succeeds
+    const firstDecision = await decisionRepo.create({
+      id: `dec_first_${Date.now()}`,
+      sessionId,
+      activityId,
+      idempotencyKey,
+      action: "RESPOND",
+      risk: "low",
+      confidence: 0.95,
+      reason: "Safe response",
+      provider: "openai",
+      model: "gpt-4o",
+      contextDigest: "a".repeat(64),
+      executionState: "DRY_RUN_COMPLETED",
+    });
+    expect(firstDecision).not.toBeNull();
+
+    // Second decision with exact same idempotency_key must be rejected by PostgreSQL unique constraint
+    await expect(
+      decisionRepo.create({
+        id: `dec_second_${Date.now()}`,
+        sessionId,
+        activityId,
+        idempotencyKey,
+        action: "RESPOND",
+        risk: "low",
+        confidence: 0.95,
+        reason: "Duplicate attempt",
+        provider: "openai",
+        model: "gpt-4o",
+        contextDigest: "b".repeat(64),
+        executionState: "DRY_RUN_COMPLETED",
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("handles database transactions and rollbacks correctly on constraint violation", async () => {
+    const invalidActivityId = `act_orphan_${Date.now()}`;
+
+    await expect(
+      db.transaction(async (tx) => {
+        // Inserting an activity pointing to non-existent session_id violates foreign key constraint
+        await tx.execute(
+          sql`INSERT INTO activities (id, session_id, type, created_at) VALUES (${invalidActivityId}, 'non_existent_session_id', 'AGENT_MESSAGE', NOW())`,
+        );
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("proves multi-statement transaction rollback atomically removes all inserted records on failure", async () => {
+    const rollbackSessionId = `ses_rollback_${Date.now()}`;
+    const rollbackActivityId = `act_rollback_${Date.now()}`;
+
+    let caughtError: Error | null = null;
+    try {
+      await db.transaction(async (tx) => {
+        // Statement 1: Insert valid session
+        await tx.execute(
+          sql`INSERT INTO sessions (id, name, repository, prompt, state, created_at, updated_at)
+              VALUES (${rollbackSessionId}, 'Rollback Session', 'org/repo', 'prompt', 'PLANNING', NOW(), NOW())`,
+        );
+
+        // Statement 2: Insert valid activity referencing that session
+        await tx.execute(
+          sql`INSERT INTO activities (id, session_id, type, created_at)
+              VALUES (${rollbackActivityId}, ${rollbackSessionId}, 'PLAN_GENERATED', NOW())`,
+        );
+
+        // Trigger controlled failure before transaction commits
+        throw new Error("Controlled rollback trigger");
+      });
+    } catch (err: unknown) {
+      caughtError = err as Error;
+    }
+
+    expect(caughtError?.message).toBe("Controlled rollback trigger");
+
+    // Prove NEITHER record persisted in the database after the transaction aborted
+    const sessionCheck = await db.execute(
+      sql`SELECT id FROM sessions WHERE id = ${rollbackSessionId}`,
+    );
+    expect(sessionCheck.rows.length).toBe(0);
+
+    const activityCheck = await db.execute(
+      sql`SELECT id FROM activities WHERE id = ${rollbackActivityId}`,
+    );
+    expect(activityCheck.rows.length).toBe(0);
+  });
+
+  it("records audit events and approval requests accurately", async () => {
+    const sessionId = `ses_audit_${Date.now()}`;
+    const activityId = `act_audit_${Date.now()}`;
+    const decisionId = `dec_audit_${Date.now()}`;
+    const approvalId = `appr_audit_${Date.now()}`;
+
+    await sessionRepo.upsert({
+      id: sessionId,
+      name: "Audit Test",
+      repository: "octocat/audit-repo",
+      prompt: "Audit trail test",
+      state: "AWAITING_USER_INPUT",
+    });
+
+    await activityRepo.create({
+      id: activityId,
+      sessionId,
+      type: "AGENT_MESSAGE",
+      rawPayload: {},
+    });
+
+    await decisionRepo.create({
+      id: decisionId,
+      sessionId,
+      activityId,
+      idempotencyKey: `idem_audit_${Date.now()}`,
+      action: "APPROVE_PLAN",
+      risk: "high",
+      confidence: 0.9,
+      reason: "Audit approval test",
+      provider: "openai",
+      model: "gpt-4o",
+      contextDigest: "c".repeat(64),
+      executionState: "AWAITING_APPROVAL",
+    });
+
+    const approval = await approvalRepo.create({
+      id: approvalId,
+      decisionId,
+      sessionId,
+      status: "PENDING",
+      action: "APPROVE_PLAN",
+      proposedResponse: "Approve plan step",
+    });
+    expect(approval.status).toBe("PENDING");
+
+    const updatedApproval = await approvalRepo.updateStatus(
+      approvalId,
+      "APPROVED",
+      "human_reviewer_01",
+      undefined,
+      "Approved after manual code review",
+    );
+    expect(updatedApproval?.status).toBe("APPROVED");
+    expect(updatedApproval?.reviewer).toBe("human_reviewer_01");
+
+    const auditEvent = await auditRepo.record({
+      id: `aud_${Date.now()}`,
+      actor: "human_reviewer_01",
+      actorType: "HUMAN",
+      action: "APPROVAL_GRANTED",
+      targetType: "DECISION",
+      targetId: decisionId,
+      sessionId,
+      decisionId,
+      afterState: { status: "APPROVED" },
+    });
+    expect(auditEvent.actor).toBe("human_reviewer_01");
+  });
+});

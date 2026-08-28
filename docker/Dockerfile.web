@@ -8,10 +8,10 @@ FROM base AS builder
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json tsconfig.base.json tsconfig.json ./
 COPY packages/ ./packages/
-COPY apps/web/ ./apps/web/
+COPY apps/ ./apps/
 
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @jules/web build
+RUN pnpm tsc --build --force tsconfig.json && pnpm --filter @jules/web build
 
 FROM node:22-alpine AS runner
 WORKDIR /app

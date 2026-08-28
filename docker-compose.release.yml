@@ -1,0 +1,81 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-jules_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-jules_password}
+      POSTGRES_DB: ${DB_NAME:-jules_supervisor}
+    ports:
+      - "${POSTGRES_HOST_PORT:-${POSTGRES_PORT:-5439}}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-jules_user} -d ${DB_NAME:-jules_supervisor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_HOST_PORT:-${REDIS_PORT:-6389}}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    image: ${JULES_WORKER_IMAGE:-jules-supervisor-worker:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      SUPERVISOR_MODE: ${SUPERVISOR_MODE:-DRY_RUN}
+      AUTO_RESPOND_ENABLED: ${AUTO_RESPOND_ENABLED:-false}
+      AUTO_PLAN_APPROVAL_ENABLED: ${AUTO_PLAN_APPROVAL_ENABLED:-false}
+      DATABASE_URL: postgresql://${DB_USER:-jules_user}:${DB_PASSWORD:-jules_password}@postgres:5432/${DB_NAME:-jules_supervisor}?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      JULES_API_BASE_URL: ${JULES_API_BASE_URL:-https://jules.googleapis.com/v1alpha}
+      JULES_API_KEY: ${JULES_API_KEY:-mock-jules-key-placeholder}
+      AI_PROVIDER_TYPE: ${AI_PROVIDER_TYPE:-openai}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      AI_API_KEY: ${AI_API_KEY:-mock-ai-key-placeholder}
+      AI_MODEL: ${AI_MODEL:-gpt-4o}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  web:
+    image: ${JULES_WEB_IMAGE:-jules-supervisor-web:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      SUPERVISOR_MODE: ${SUPERVISOR_MODE:-DRY_RUN}
+      DATABASE_URL: postgresql://${DB_USER:-jules_user}:${DB_PASSWORD:-jules_password}@postgres:5432/${DB_NAME:-jules_supervisor}?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      AI_PROVIDER_TYPE: ${AI_PROVIDER_TYPE:-openai}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      AI_MODEL: ${AI_MODEL:-gpt-4o}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

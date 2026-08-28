@@ -78,6 +78,12 @@ export const EnvSchema = z.object({
   // Security & Web
   SESSION_SECRET: z.string().min(16).default("session-secret-at-least-32-chars-length-12345"),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
+
+  // Filesystem & Portability
+  JULES_WORKSPACE_NAME: z.string().default("jules-supervisor"),
+  JULES_WORKSPACE_PATH: z.string().default("/workspace"),
+  MIGRATIONS_FOLDER: z.string().optional(),
+  TEMP_DIR: z.string().optional(),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;

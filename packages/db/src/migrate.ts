@@ -11,7 +11,10 @@ export async function runMigrations(
   migrationsFolder?: string,
 ): Promise<void> {
   const db = getDatabase(databaseUrl);
-  const targetFolder = migrationsFolder || path.resolve(__dirname, "../migrations");
+  const targetFolder =
+    migrationsFolder ||
+    process.env["MIGRATIONS_FOLDER"] ||
+    path.resolve(__dirname, "../migrations");
   await migrate(db, { migrationsFolder: targetFolder });
 }
 

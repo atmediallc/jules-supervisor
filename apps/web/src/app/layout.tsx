@@ -104,7 +104,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="flex-1 overflow-y-auto bg-slate-950">
           <header className="h-16 border-b border-slate-800 px-8 flex items-center justify-between bg-slate-900/40">
             <div className="text-xs text-slate-400 font-mono">
-              Workspace: <span className="text-slate-200">G:\proyectos\Jules-Supervisor</span>
+              Workspace:{" "}
+              <span className="text-slate-200">
+                {process.env["JULES_WORKSPACE_NAME"] || "jules-supervisor"}
+              </span>
             </div>
             <div className="flex items-center gap-4 text-xs font-mono">
               <span className="px-2.5 py-1 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">

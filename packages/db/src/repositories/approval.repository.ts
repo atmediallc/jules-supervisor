@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { Database } from "../client.js";
 import { approvalRequests } from "../schema.js";
 
@@ -56,7 +56,7 @@ export class ApprovalRepository {
         reviewComment: comment ?? null,
         reviewedAt: new Date(),
       })
-      .where(eq(approvalRequests.id, id))
+      .where(and(eq(approvalRequests.id, id), eq(approvalRequests.status, "PENDING")))
       .returning();
     return updated[0] ?? null;
   }

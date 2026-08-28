@@ -206,7 +206,7 @@ export class InMemoryRepositoryStore {
     comment?: string,
   ): Promise<ApprovalRequestSelect | null> {
     const row = this.approvalRequests.get(id);
-    if (!row) return null;
+    if (!row || row.status !== "PENDING") return null;
     row.status = status;
     row.reviewer = reviewer;
     row.modifiedResponse = modifiedResponse ?? null;

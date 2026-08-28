@@ -273,4 +273,70 @@ describe("Real PostgreSQL 16 & Drizzle Schema Integration", () => {
     });
     expect(auditEvent.actor).toBe("human_reviewer_01");
   });
+
+  it("proves concurrent double-submit on approval request guarantees exactly one winner and one rejection", async () => {
+    const sessionId = `ses_race_${Date.now()}`;
+    const activityId = `act_race_${Date.now()}`;
+    const decisionId = `dec_race_${Date.now()}`;
+    const approvalId = `appr_race_${Date.now()}`;
+
+    await sessionRepo.upsert({
+      id: sessionId,
+      name: "Race Test",
+      repository: "octocat/race-repo",
+      prompt: "Race test",
+      state: "AWAITING_PLAN_APPROVAL",
+    });
+
+    await activityRepo.create({
+      id: activityId,
+      sessionId,
+      type: "PLAN_GENERATED",
+      rawPayload: {},
+    });
+
+    await decisionRepo.create({
+      id: decisionId,
+      sessionId,
+      activityId,
+      idempotencyKey: `idem_race_${Date.now()}`,
+      action: "APPROVE_PLAN",
+      risk: "high",
+      confidence: 0.95,
+      reason: "Race test",
+      provider: "openai",
+      model: "gpt-4o",
+      contextDigest: "d".repeat(64),
+      executionState: "AWAITING_APPROVAL",
+    });
+
+    // Insert pending approval request
+    await approvalRepo.create({
+      id: approvalId,
+      decisionId,
+      sessionId,
+      status: "PENDING",
+      action: "APPROVE_PLAN",
+      proposedResponse: "Approve plan step",
+    });
+
+    // Fire TWO concurrent updateStatus requests simultaneously
+    const [result1, result2] = await Promise.all([
+      approvalRepo.updateStatus(approvalId, "APPROVED", "operator_alpha"),
+      approvalRepo.updateStatus(approvalId, "REJECTED", "operator_beta"),
+    ]);
+
+    // Exactly ONE request succeeds; the other returns null (atomic CAS failure)
+    const successCount = (result1 !== null ? 1 : 0) + (result2 !== null ? 1 : 0);
+    const rejectedCount = (result1 === null ? 1 : 0) + (result2 === null ? 1 : 0);
+
+    expect(successCount).toBe(1);
+    expect(rejectedCount).toBe(1);
+
+    // Verify DB persisted exactly the winner's status
+    const finalRecord = await approvalRepo.findById(approvalId);
+    expect(finalRecord).not.toBeNull();
+    expect(["APPROVED", "REJECTED"]).toContain(finalRecord!.status);
+    expect(finalRecord!.status).toBe(result1 ? "APPROVED" : "REJECTED");
+  });
 });

@@ -87,6 +87,39 @@ describe("Real Redis & Distributed Lock Integration", () => {
 
     await lockB.release(resource, tokenB!);
   });
+
+  it("proves adversarial lock ownership safety: Worker B lock survives when Worker A attempts release after TTL expiry", async () => {
+    const resource = `res_adversarial_${Date.now()}`;
+    const shortTtlMs = 200;
+
+    // 1. Worker A obtains lock with token A
+    const tokenA = await lockA.acquire(resource, shortTtlMs);
+    expect(tokenA).not.toBeNull();
+
+    // 2. A pauses beyond TTL
+    await sleep(300);
+
+    // 3. Worker B obtains same lock with token B
+    const tokenB = await lockB.acquire(resource, 10000);
+    expect(tokenB).not.toBeNull();
+    expect(tokenB).not.toBe(tokenA);
+
+    // 4 & 5. A resumes and attempts to release lock with its expired token A
+    const releaseResultA = await lockA.release(resource, tokenA!);
+    // A's release MUST fail (return false) because token A does not match current lock token B
+    expect(releaseResultA).toBe(false);
+
+    // 6. B's lock MUST survive intact in Redis
+    const currentLockValue = await redisClientB.get(`lock:${resource}`);
+    expect(currentLockValue).toBe(tokenB);
+
+    // B cleanly releases its own lock
+    const releaseResultB = await lockB.release(resource, tokenB!);
+    expect(releaseResultB).toBe(true);
+
+    const finalVal = await redisClientB.get(`lock:${resource}`);
+    expect(finalVal).toBeNull();
+  });
 });
 
 describe("Real BullMQ Queue Lifecycle & Job Processing over Redis", () => {

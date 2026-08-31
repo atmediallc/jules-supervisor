@@ -9,6 +9,13 @@ export interface MetricSnapshot {
   julesErrorsTotal: Record<string, number>;
   aiErrorsTotal: Record<string, number>;
   duplicateEventsPrevented: number;
+  budgetExhaustionsTotal: number;
+  /** P1: relational memory retrieval metrics. */
+  precedentQueriesTotal: number;
+  precedentsReturnedTotal: number;
+  knowledgeQueriesTotal: number;
+  knowledgeItemsReturnedTotal: number;
+  memoryRetrievalFailuresTotal: number;
 }
 
 class MetricsRegistry {
@@ -22,6 +29,13 @@ class MetricsRegistry {
   private julesErrors: Record<string, number> = {};
   private aiErrors: Record<string, number> = {};
   private duplicatesPrevented = 0;
+  private budgetExhaustions = 0;
+  // P1: relational memory metrics
+  private precedentQueries = 0;
+  private precedentsReturned = 0;
+  private knowledgeQueries = 0;
+  private knowledgeItemsReturned = 0;
+  private memoryRetrievalFailures = 0;
 
   public recordJulesLatency(ms: number): void {
     this.julesLatencies.push(ms);
@@ -66,6 +80,31 @@ class MetricsRegistry {
     this.duplicatesPrevented++;
   }
 
+  public incrementBudgetExhaustion(): void {
+    this.budgetExhaustions++;
+  }
+
+  // P1: memory retrieval metrics
+  public incrementPrecedentQuery(): void {
+    this.precedentQueries++;
+  }
+
+  public recordPrecedentsReturned(count: number): void {
+    this.precedentsReturned += count;
+  }
+
+  public incrementKnowledgeQuery(): void {
+    this.knowledgeQueries++;
+  }
+
+  public recordKnowledgeItemsReturned(count: number): void {
+    this.knowledgeItemsReturned += count;
+  }
+
+  public incrementMemoryRetrievalFailure(): void {
+    this.memoryRetrievalFailures++;
+  }
+
   private summarize(data: number[]) {
     if (data.length === 0) return { count: 0, avg: 0, min: 0, max: 0 };
     const sum = data.reduce((a, b) => a + b, 0);
@@ -89,6 +128,12 @@ class MetricsRegistry {
       julesErrorsTotal: { ...this.julesErrors },
       aiErrorsTotal: { ...this.aiErrors },
       duplicateEventsPrevented: this.duplicatesPrevented,
+      budgetExhaustionsTotal: this.budgetExhaustions,
+      precedentQueriesTotal: this.precedentQueries,
+      precedentsReturnedTotal: this.precedentsReturned,
+      knowledgeQueriesTotal: this.knowledgeQueries,
+      knowledgeItemsReturnedTotal: this.knowledgeItemsReturned,
+      memoryRetrievalFailuresTotal: this.memoryRetrievalFailures,
     };
   }
 
@@ -126,6 +171,44 @@ class MetricsRegistry {
     lines.push("# TYPE jules_duplicates_prevented_total counter");
     lines.push(`jules_duplicates_prevented_total ${this.duplicatesPrevented}`);
 
+    // Budget exhaustions
+    lines.push(
+      "# HELP jules_budget_exhaustions_total Total decisions escalated due to exhausted autonomy budget",
+    );
+    lines.push("# TYPE jules_budget_exhaustions_total counter");
+    lines.push(`jules_budget_exhaustions_total ${this.budgetExhaustions}`);
+
+    // P1: relational memory metrics
+    lines.push(
+      "# HELP jules_precedent_queries_total Total precedent (cross-session memory) queries executed",
+    );
+    lines.push("# TYPE jules_precedent_queries_total counter");
+    lines.push(`jules_precedent_queries_total ${this.precedentQueries}`);
+
+    lines.push(
+      "# HELP jules_precedents_returned_total Total precedents returned to decision prompts",
+    );
+    lines.push("# TYPE jules_precedents_returned_total counter");
+    lines.push(`jules_precedents_returned_total ${this.precedentsReturned}`);
+
+    lines.push(
+      "# HELP jules_repository_knowledge_queries_total Total repository knowledge queries executed",
+    );
+    lines.push("# TYPE jules_repository_knowledge_queries_total counter");
+    lines.push(`jules_repository_knowledge_queries_total ${this.knowledgeQueries}`);
+
+    lines.push(
+      "# HELP jules_repository_knowledge_items_total Total knowledge items returned to decision prompts",
+    );
+    lines.push("# TYPE jules_repository_knowledge_items_total counter");
+    lines.push(`jules_repository_knowledge_items_total ${this.knowledgeItemsReturned}`);
+
+    lines.push(
+      "# HELP jules_memory_retrieval_failures_total Total memory retrieval failures (degraded to empty memory)",
+    );
+    lines.push("# TYPE jules_memory_retrieval_failures_total counter");
+    lines.push(`jules_memory_retrieval_failures_total ${this.memoryRetrievalFailures}`);
+
     // Jules Latency
     const julesSummary = this.summarize(this.julesLatencies);
     lines.push(
@@ -156,6 +239,12 @@ class MetricsRegistry {
     this.julesErrors = {};
     this.aiErrors = {};
     this.duplicatesPrevented = 0;
+    this.budgetExhaustions = 0;
+    this.precedentQueries = 0;
+    this.precedentsReturned = 0;
+    this.knowledgeQueries = 0;
+    this.knowledgeItemsReturned = 0;
+    this.memoryRetrievalFailures = 0;
   }
 }
 

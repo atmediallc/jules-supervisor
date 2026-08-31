@@ -1,9 +1,12 @@
-import { ContextBuilder, IAiDecisionProvider } from "@jules/ai";
+import { AiDecisionResponse, ContextBuilder, IAiDecisionProvider } from "@jules/ai";
 import { AppConfig } from "@jules/config";
 import {
+  BudgetUsage,
   calculateDeterministicRisk,
   Decision,
   DecisionAction,
+  estimateCostUsd,
+  evaluateBudgetExhaustion,
   evaluateExecutionGate,
   ExecutionGateResult,
   LoopDetector,
@@ -12,6 +15,7 @@ import {
   ActivityRepository,
   ApprovalRepository,
   AuditRepository,
+  BudgetRepository,
   DecisionRepository,
   SessionRepository,
 } from "@jules/db";
@@ -20,6 +24,7 @@ import { logger, metrics } from "@jules/observability";
 import { PolicyEngine } from "@jules/policy";
 import { generateId, sha256 } from "@jules/shared";
 import { IDistributedLock } from "./lock.js";
+import type { MemoryContext, MemoryContextService } from "./memory-context.js";
 
 export interface PipelineDependencies {
   config: AppConfig;
@@ -31,7 +36,10 @@ export interface PipelineDependencies {
   decisionRepo: DecisionRepository;
   approvalRepo: ApprovalRepository;
   auditRepo: AuditRepository;
+  budgetRepo: BudgetRepository;
   lock: IDistributedLock;
+  /** P1: advisory memory retrieval (optional for backward compatibility). */
+  memoryService?: MemoryContextService;
 }
 
 export interface ProcessActivityInput {
@@ -57,9 +65,11 @@ export class SupervisionPipeline {
   private readonly decisionRepo: DecisionRepository;
   private readonly approvalRepo: ApprovalRepository;
   private readonly auditRepo: AuditRepository;
+  private readonly budgetRepo: BudgetRepository;
   private readonly lock: IDistributedLock;
   private readonly contextBuilder: ContextBuilder;
   private readonly loopDetector: LoopDetector;
+  private readonly memoryService: MemoryContextService | null;
 
   constructor(deps: PipelineDependencies) {
     this.config = deps.config;
@@ -71,9 +81,15 @@ export class SupervisionPipeline {
     this.decisionRepo = deps.decisionRepo;
     this.approvalRepo = deps.approvalRepo;
     this.auditRepo = deps.auditRepo;
+    this.budgetRepo = deps.budgetRepo;
     this.lock = deps.lock;
-    this.contextBuilder = new ContextBuilder({ maxBudgetTokens: deps.config.AI_MAX_TOKENS * 2 });
+    this.contextBuilder = new ContextBuilder({
+      maxBudgetTokens: deps.config.AI_MAX_TOKENS * 2,
+      // P1: advisory memory budget — ContextBuilder additionally caps it at 35% of maxBudgetTokens.
+      memoryBudgetTokens: deps.config.MEMORY_ADVISORY_TOKEN_BUDGET,
+    });
     this.loopDetector = new LoopDetector({ maxTotalSessionCycles: deps.config.MAX_SESSION_CYCLES });
+    this.memoryService = deps.memoryService ?? null;
   }
 
   public async processActivity(
@@ -158,7 +174,12 @@ export class SupervisionPipeline {
         log.warn("Loop detected for session. Forcing human review.", { reason: loopCheck.reason });
       }
 
-      // 4. Build Context
+      // 4. Build Context (P1: retrieve advisory memory inside the lock so the
+      // prompt and its provenance stay consistent even under concurrency).
+      const memoryContext: MemoryContext | null = this.memoryService
+        ? await this.memoryService.retrieve(session.repository, session.id)
+        : null;
+
       const context = this.contextBuilder.build({
         sessionId: session.id,
         repository: session.repository,
@@ -177,10 +198,67 @@ export class SupervisionPipeline {
           type: a.type,
           content: a.content || "",
         })),
+        historicalPrecedents: memoryContext?.historicalPrecedents ?? [],
+        repositoryKnowledge: memoryContext?.repositoryKnowledge ?? [],
       });
 
-      // 5. Query AI Decision Engine
-      const aiResponse = await this.aiProvider.decide(context);
+      // 5. Autonomy Budget Gate (before any AI call)
+      const budgetRow = await this.budgetRepo.findBySession(session.id);
+      const budgetUsage: BudgetUsage = {
+        aiCalls: budgetRow?.aiCalls ?? 0,
+        promptTokens: budgetRow?.promptTokens ?? 0,
+        completionTokens: budgetRow?.completionTokens ?? 0,
+        totalTokens: budgetRow?.totalTokens ?? 0,
+        estimatedCostUsd: budgetRow?.estimatedCostUsd ?? 0,
+        corrections: budgetRow?.corrections ?? 0,
+      };
+      const budgetCheck = evaluateBudgetExhaustion(budgetUsage, {
+        maxAiCalls: this.config.BUDGET_MAX_AI_CALLS_PER_SESSION,
+        maxTotalTokens: this.config.BUDGET_MAX_TOKENS_PER_SESSION,
+        maxCostUsd: this.config.BUDGET_MAX_COST_USD_PER_SESSION,
+        maxCorrections: this.config.BUDGET_MAX_CORRECTIONS_PER_SESSION,
+      });
+      const budgetExceeded = budgetCheck.exceeded;
+
+      let aiResponse: AiDecisionResponse;
+      if (budgetExceeded) {
+        // Budget exhausted: skip the AI call entirely and escalate to a human.
+        log.warn("Autonomy budget exhausted. Escalating to human review.", {
+          reasons: budgetCheck.reasons,
+          budgetUsage,
+        });
+        aiResponse = {
+          provider: "budget-guard",
+          model: "none",
+          decision: {
+            action: "REQUEST_HUMAN" as DecisionAction,
+            response: null,
+            risk: "high",
+            confidence: 1.0,
+            reason: `Autonomy budget exhausted: ${budgetCheck.reasons.join("; ")}. Human review required before further AI calls.`,
+            evidence: budgetCheck.reasons,
+            concerns: ["autonomy-budget-exhausted"],
+          } as Decision,
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          latencyMs: 0,
+        };
+        metrics.incrementBudgetExhaustion();
+      } else {
+        // 6. Query AI Decision Engine
+        aiResponse = await this.aiProvider.decide(context);
+        // Record actual AI usage against the persistent budget (atomic upsert).
+        await this.budgetRepo.incrementUsage(session.id, {
+          aiCalls: 1,
+          promptTokens: aiResponse.usage?.promptTokens ?? 0,
+          completionTokens: aiResponse.usage?.completionTokens ?? 0,
+          totalTokens: aiResponse.usage?.totalTokens ?? 0,
+          estimatedCostUsd: this.estimateCost(
+            aiResponse.usage?.promptTokens ?? 0,
+            aiResponse.usage?.completionTokens ?? 0,
+          ),
+        });
+      }
+
       let proposedDecision: Decision = aiResponse.decision;
 
       if (loopCheck.isLoopDetected) {
@@ -241,7 +319,7 @@ export class SupervisionPipeline {
             ? "BLOCKED"
             : "DRY_RUN_COMPLETED";
 
-      // 8. Persist Decision Record
+      // 8. Persist Decision Record (with AI usage & cost accounting)
       await this.decisionRepo.create({
         id: decisionId,
         sessionId: session.id,
@@ -258,6 +336,17 @@ export class SupervisionPipeline {
         model: aiResponse.model,
         contextDigest: context.contextDigest,
         executionState,
+        promptTokens: aiResponse.usage?.promptTokens ?? 0,
+        completionTokens: aiResponse.usage?.completionTokens ?? 0,
+        totalTokens: aiResponse.usage?.totalTokens ?? 0,
+        estimatedCostUsd: this.estimateCost(
+          aiResponse.usage?.promptTokens ?? 0,
+          aiResponse.usage?.completionTokens ?? 0,
+        ),
+        aiLatencyMs: aiResponse.latencyMs ?? 0,
+        // P1 provenance: which precedents/knowledge informed this decision.
+        precedentDecisionIds: memoryContext?.precedentDecisionIds ?? [],
+        repositoryKnowledgeIds: memoryContext?.repositoryKnowledgeIds ?? [],
       });
 
       // 9. Record Audit Log
@@ -360,5 +449,17 @@ export class SupervisionPipeline {
         requiresHumanReview: false,
       };
     });
+  }
+
+  /**
+   * Deterministic cost estimation for one AI call (config-driven rates).
+   */
+  private estimateCost(promptTokens: number, completionTokens: number): number {
+    return estimateCostUsd(
+      promptTokens,
+      completionTokens,
+      this.config.AI_COST_PER_1K_PROMPT_TOKENS_USD,
+      this.config.AI_COST_PER_1K_COMPLETION_TOKENS_USD,
+    );
   }
 }

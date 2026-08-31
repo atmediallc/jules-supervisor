@@ -11,6 +11,7 @@ import {
   DecisionRepository,
   ApprovalRepository,
   AuditRepository,
+  BudgetRepository,
 } from "@jules/db";
 import { Redis } from "ioredis";
 import { RedisDistributedLock } from "../../apps/worker/src/lock.js";
@@ -31,6 +32,7 @@ describe("Supervision Pipeline with Real PostgreSQL 16 and Real Redis", () => {
   let decisionRepo: DecisionRepository;
   let approvalRepo: ApprovalRepository;
   let auditRepo: AuditRepository;
+  let budgetRepo: BudgetRepository;
 
   beforeAll(async () => {
     db = getDatabase(TEST_DB_URL);
@@ -43,6 +45,7 @@ describe("Supervision Pipeline with Real PostgreSQL 16 and Real Redis", () => {
     decisionRepo = new DecisionRepository(db);
     approvalRepo = new ApprovalRepository(db);
     auditRepo = new AuditRepository(db);
+    budgetRepo = new BudgetRepository(db);
   });
 
   afterAll(async () => {
@@ -71,6 +74,7 @@ describe("Supervision Pipeline with Real PostgreSQL 16 and Real Redis", () => {
       decisionRepo,
       approvalRepo,
       auditRepo,
+      budgetRepo,
       lock,
     });
 
@@ -137,6 +141,7 @@ describe("Supervision Pipeline with Real PostgreSQL 16 and Real Redis", () => {
       decisionRepo,
       approvalRepo,
       auditRepo,
+      budgetRepo,
       lock,
     });
 

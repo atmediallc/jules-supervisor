@@ -8,6 +8,20 @@
       "when": 1787927286423,
       "tag": "0000_tearful_supernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788013654321,
+      "tag": "0001_autonomy_budgets_outcomes",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788129395761,
+      "tag": "0002_magenta_human_fly",
+      "breakpoints": true
     }
   ]
 }

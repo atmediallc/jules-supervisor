@@ -6,4 +6,6 @@ export * from "./repositories/activity.repository.js";
 export * from "./repositories/decision.repository.js";
 export * from "./repositories/approval.repository.js";
 export * from "./repositories/audit.repository.js";
+export * from "./repositories/budget.repository.js";
+export * from "./repositories/repository-knowledge.repository.js";
 export { sql, eq, desc } from "drizzle-orm";

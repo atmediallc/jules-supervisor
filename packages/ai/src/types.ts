@@ -19,6 +19,30 @@ export interface DecisionPromptInput {
     content: string;
   }>;
   projectPolicyRules?: Record<string, unknown>;
+  /** P1: cross-session precedents (relational memory, advisory only). */
+  historicalPrecedents?: HistoricalPrecedentDto[];
+  /** P1: repository knowledge entries (advisory, untrusted). */
+  repositoryKnowledge?: RepositoryKnowledgeDto[];
+}
+
+/** P1: sanitized precedent DTO passed to the context builder. */
+export interface HistoricalPrecedentDto {
+  decisionId: string;
+  action: string;
+  outcomeClass: string;
+  observedAt: string | null;
+  /** Sanitized excerpt of the final response (or proposal). */
+  excerpt: string;
+  /** Whether a human reviewed this decision. */
+  humanReviewed: boolean;
+}
+
+/** P1: sanitized repository knowledge DTO. */
+export interface RepositoryKnowledgeDto {
+  knowledgeId: string;
+  knowledgeType: string;
+  trustLevel: string;
+  content: string;
 }
 
 export interface BuiltContext {

@@ -82,6 +82,24 @@ export const decisions = pgTable(
     executionState: varchar("execution_state", { length: 64 }).notNull().default("PENDING"),
     executedAt: timestamp("executed_at", { withTimezone: true }),
     executionError: text("execution_error"),
+    // Outcome tracking & human feedback correlation (autonomy audit P0)
+    outcome: varchar("outcome", { length: 32 }),
+    humanAction: varchar("human_action", { length: 32 }),
+    humanReason: text("human_reason"),
+    humanReviewedAt: timestamp("human_reviewed_at", { withTimezone: true }),
+    outcomeObservedAt: timestamp("outcome_observed_at", { withTimezone: true }),
+    // AI usage / cost accounting (autonomy audit P0)
+    promptTokens: integer("prompt_tokens").notNull().default(0),
+    completionTokens: integer("completion_tokens").notNull().default(0),
+    totalTokens: integer("total_tokens").notNull().default(0),
+    estimatedCostUsd: doublePrecision("estimated_cost_usd").notNull().default(0),
+    aiLatencyMs: integer("ai_latency_ms").notNull().default(0),
+    // Correction loop (autonomy audit P0)
+    correctionOfDecisionId: varchar("correction_of_decision_id", { length: 128 }),
+    // Final approved value & provenance (P1 Phase 8 + memory provenance)
+    finalApprovedResponse: text("final_approved_response"),
+    precedentDecisionIds: jsonb("precedent_decision_ids").$type<string[]>().default([]),
+    repositoryKnowledgeIds: jsonb("repository_knowledge_ids").$type<string[]>().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -89,6 +107,10 @@ export const decisions = pgTable(
     index("idx_decisions_session_id").on(table.sessionId),
     index("idx_decisions_execution_state").on(table.executionState),
     index("idx_decisions_created_at").on(table.createdAt),
+    index("idx_decisions_outcome").on(table.outcome),
+    index("idx_decisions_human_action").on(table.humanAction),
+    index("idx_decisions_correction_of").on(table.correctionOfDecisionId),
+    index("idx_decisions_session_outcome").on(table.sessionId, table.outcome),
   ],
 );
 
@@ -166,4 +188,57 @@ export const policies = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("idx_policies_enabled").on(table.enabled)],
+);
+
+// Cross-session repository knowledge base (P1: repository knowledge ingestion).
+// PostgreSQL-relational only — NO vectors, NO embeddings.
+export const repositoryKnowledge = pgTable(
+  "repository_knowledge",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    repositoryId: varchar("repository_id", { length: 256 }).notNull(),
+    knowledgeType: varchar("knowledge_type", { length: 64 }).notNull(),
+    content: text("content").notNull(),
+    sourceType: varchar("source_type", { length: 64 }).notNull(),
+    sourcePath: varchar("source_path", { length: 512 }),
+    sourceHash: varchar("source_hash", { length: 64 }),
+    trustLevel: varchar("trust_level", { length: 64 }).notNull().default("INFERRED"),
+    validFrom: timestamp("valid_from", { withTimezone: true }).notNull().defaultNow(),
+    validUntil: timestamp("valid_until", { withTimezone: true }),
+    supersededBy: varchar("superseded_by", { length: 128 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_repo_knowledge_repository_id").on(table.repositoryId),
+    index("idx_repo_knowledge_type").on(table.knowledgeType),
+    index("idx_repo_knowledge_trust").on(table.trustLevel),
+    index("idx_repo_knowledge_superseded_by").on(table.supersededBy),
+    uniqueIndex("uniq_repo_knowledge_dedup").on(
+      table.repositoryId,
+      table.knowledgeType,
+      table.sourceType,
+      table.sourceHash,
+    ),
+  ],
+);
+
+// Autonomy Budget Engine persistent counters (audit P0: budgets must survive restarts)
+export const sessionBudgets = pgTable(
+  "session_budgets",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    sessionId: varchar("session_id", { length: 128 })
+      .notNull()
+      .unique()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    aiCalls: integer("ai_calls").notNull().default(0),
+    promptTokens: integer("prompt_tokens").notNull().default(0),
+    completionTokens: integer("completion_tokens").notNull().default(0),
+    totalTokens: integer("total_tokens").notNull().default(0),
+    estimatedCostUsd: doublePrecision("estimated_cost_usd").notNull().default(0),
+    corrections: integer("corrections").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("idx_session_budgets_session").on(table.sessionId)],
 );

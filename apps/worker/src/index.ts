@@ -4,8 +4,10 @@ import {
   ActivityRepository,
   ApprovalRepository,
   AuditRepository,
+  BudgetRepository,
   DecisionRepository,
   getDatabase,
+  RepositoryKnowledgeRepository,
   SessionRepository,
 } from "@jules/db";
 import { JulesApiClient, MockJulesClient } from "@jules/jules-client";
@@ -13,6 +15,7 @@ import { logger } from "@jules/observability";
 import { PolicyEngine } from "@jules/policy";
 import { Redis } from "ioredis";
 import { InMemoryDistributedLock, RedisDistributedLock } from "./lock.js";
+import { MemoryContextService } from "./memory-context.js";
 import { SupervisionPipeline } from "./pipeline.js";
 import { SessionWatcher } from "./poller.js";
 import { BullMqSupervisorQueue, DirectSupervisorQueue } from "./queue.js";
@@ -31,6 +34,8 @@ async function main() {
   const decisionRepo = new DecisionRepository(db);
   const approvalRepo = new ApprovalRepository(db);
   const auditRepo = new AuditRepository(db);
+  const budgetRepo = new BudgetRepository(db);
+  const knowledgeRepo = new RepositoryKnowledgeRepository(db);
 
   // Initialize Jules Client (Live or Mock based on key placeholder)
   const julesClient =
@@ -65,6 +70,14 @@ async function main() {
     lock = new InMemoryDistributedLock();
   }
 
+  // P1: Cross-session relational memory service (advisory evidence)
+  const memoryService = new MemoryContextService(decisionRepo, knowledgeRepo, {
+    maxSuccess: config.MEMORY_PRECEDENT_MAX_SUCCESS,
+    maxHumanReviewed: config.MEMORY_PRECEDENT_MAX_HUMAN_REVIEWED,
+    maxFailures: config.MEMORY_PRECEDENT_MAX_FAILURES,
+    maxKnowledgeItems: config.MEMORY_KNOWLEDGE_MAX_ITEMS,
+  });
+
   // Pipeline
   const pipeline = new SupervisionPipeline({
     config,
@@ -76,7 +89,9 @@ async function main() {
     decisionRepo,
     approvalRepo,
     auditRepo,
+    budgetRepo,
     lock,
+    memoryService,
   });
 
   // Queue

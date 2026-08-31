@@ -34,6 +34,22 @@ export const EnvSchema = z.object({
   POLL_INTERVAL_MS: z.coerce.number().min(1000).max(300000).default(5000),
   CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.85),
 
+  // Autonomy Budget Engine (per Jules session, persisted in PostgreSQL)
+  BUDGET_MAX_AI_CALLS_PER_SESSION: z.coerce.number().min(1).max(1000).default(50),
+  BUDGET_MAX_TOKENS_PER_SESSION: z.coerce.number().min(1000).max(10_000_000).default(100_000),
+  BUDGET_MAX_COST_USD_PER_SESSION: z.coerce.number().min(0.01).max(1000).default(5),
+  BUDGET_MAX_CORRECTIONS_PER_SESSION: z.coerce.number().min(1).max(20).default(3),
+  AI_COST_PER_1K_PROMPT_TOKENS_USD: z.coerce.number().min(0).default(2.5),
+  AI_COST_PER_1K_COMPLETION_TOKENS_USD: z.coerce.number().min(0).default(10),
+
+  // P1: Cross-session relational memory retrieval bounds (advisory evidence).
+  // Clamped to MEMORY_RETRIEVAL_BOUNDS from @jules/core (hard ceilings).
+  MEMORY_PRECEDENT_MAX_SUCCESS: z.coerce.number().min(0).max(100).default(10),
+  MEMORY_PRECEDENT_MAX_HUMAN_REVIEWED: z.coerce.number().min(0).max(100).default(5),
+  MEMORY_PRECEDENT_MAX_FAILURES: z.coerce.number().min(0).max(100).default(3),
+  MEMORY_KNOWLEDGE_MAX_ITEMS: z.coerce.number().min(0).max(100).default(20),
+  MEMORY_ADVISORY_TOKEN_BUDGET: z.coerce.number().min(128).max(4096).default(1024),
+
   // Google Jules API Configuration
   JULES_API_BASE_URL: z.string().url().default("https://jules.googleapis.com/v1alpha"),
   JULES_API_KEY: z.string().min(1).default("mock-jules-key-placeholder"),

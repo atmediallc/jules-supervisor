@@ -1,5 +1,5 @@
 import { createAiProvider } from "@jules/ai";
-import { getConfig } from "@jules/config";
+import { getConfig, setDbOverrides } from "@jules/config";
 import {
   ActivityRepository,
   ApprovalRepository,
@@ -9,6 +9,7 @@ import {
   getDatabase,
   RepositoryKnowledgeRepository,
   SessionRepository,
+  SystemSettingsRepository,
 } from "@jules/db";
 import { JulesApiClient, MockJulesClient } from "@jules/jules-client";
 import { logger } from "@jules/observability";
@@ -21,13 +22,28 @@ import { SessionWatcher } from "./poller.js";
 import { BullMqSupervisorQueue, DirectSupervisorQueue } from "./queue.js";
 
 async function main() {
+  // 1. Initial config from env vars
+  const baseConfig = getConfig();
+
+  // 2. Connect to DB and load admin-managed settings overrides
+  const db = getDatabase(baseConfig.DATABASE_URL);
+  try {
+    const settingsRepo = new SystemSettingsRepository(db);
+    const dbOverrides = await settingsRepo.getAsMap();
+    if (Object.keys(dbOverrides).length > 0) {
+      setDbOverrides(dbOverrides);
+      logger.info(`Loaded ${Object.keys(dbOverrides).length} setting(s) from database`);
+    }
+  } catch {
+    logger.warn("Could not load system_settings from DB — using env-only config");
+  }
+
+  // 3. Final config with DB overrides applied
   const config = getConfig();
   logger.info("Initializing Jules Supervisor Worker Daemon...", {
     mode: config.SUPERVISOR_MODE,
     provider: config.AI_PROVIDER_TYPE,
   });
-
-  const db = getDatabase(config.DATABASE_URL);
 
   const sessionRepo = new SessionRepository(db);
   const activityRepo = new ActivityRepository(db);

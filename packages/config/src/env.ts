@@ -105,13 +105,27 @@ export const EnvSchema = z.object({
 export type AppConfig = z.infer<typeof EnvSchema>;
 
 let _config: AppConfig | null = null;
+let _dbOverrides: Record<string, string> = {};
+
+/** Set database-sourced overrides that take precedence over env vars. */
+export function setDbOverrides(overrides: Record<string, string>): void {
+  _dbOverrides = overrides;
+  _config = null; // force re-parse
+}
+
+/** Clear the cached config (called after settings are updated via admin UI). */
+export function clearConfigCache(): void {
+  _config = null;
+}
 
 export function getConfig(overrideEnv?: Record<string, string>): AppConfig {
   if (overrideEnv) {
     return EnvSchema.parse({ ...process.env, ...overrideEnv });
   }
   if (!_config) {
-    const result = EnvSchema.safeParse(process.env);
+    // Merge: env vars → DB overrides (DB wins)
+    const merged = { ...process.env, ..._dbOverrides };
+    const result = EnvSchema.safeParse(merged);
     if (!result.success) {
       console.error("❌ Environment configuration validation failed:");
       console.error(result.error.format());

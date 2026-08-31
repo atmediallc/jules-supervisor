@@ -223,6 +223,23 @@ export const repositoryKnowledge = pgTable(
   ],
 );
 
+// ── System Settings (admin-managed configuration overrides) ──────────────
+// Key-value store for runtime configuration that can be edited from the web admin.
+// Secrets are stored encrypted at rest; the API layer handles encryption/decryption.
+export const systemSettings = pgTable(
+  "system_settings",
+  {
+    key: varchar("key", { length: 128 }).primaryKey(),
+    value: text("value").notNull(),
+    category: varchar("category", { length: 64 }).notNull().default("general"),
+    isSecret: boolean("is_secret").notNull().default(false),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("idx_system_settings_category").on(table.category)],
+);
+
 // Autonomy Budget Engine persistent counters (audit P0: budgets must survive restarts)
 export const sessionBudgets = pgTable(
   "session_budgets",

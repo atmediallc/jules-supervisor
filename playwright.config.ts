@@ -17,14 +17,22 @@ export default defineConfig({
   },
   projects: [
     {
+      name: "auth-setup",
+      testMatch: /auth\.setup\.ts/,
+    },
+    {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "tests/e2e/.auth/user.json",
+      },
+      dependencies: ["auth-setup"],
     },
   ],
   webServer: {
     command: "pnpm --filter @jules/web start --port 3000",
-    url: "http://localhost:3000/health/live",
-    reuseExistingServer: !process.env["CI"],
+    url: "http://localhost:3000/api/health",
+    reuseExistingServer: true,
     timeout: 30000,
   },
 });

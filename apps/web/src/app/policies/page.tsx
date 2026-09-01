@@ -1,39 +1,33 @@
+import { getConfig } from "@jules/config";
+import { getDatabase, policies, sql } from "@jules/db";
+
 export const dynamic = "force-dynamic";
 
-export default function PoliciesPage() {
-  const policyRules = [
-    {
-      name: "No Destructive Commands Rule",
-      type: "HARD_VETO",
-      status: "ACTIVE",
-      description:
-        "Permanently blocks any SQL or shell pattern matching DROP TABLE, rm -rf, git force push, or --no-verify.",
-      target: "All Sessions",
-    },
-    {
-      name: "Security Paths Protection Rule",
-      type: "REQUIRE_HUMAN",
-      status: "ACTIVE",
-      description:
-        "Mandates human review for changes touching .env, auth/, migrations/, .github/workflows/, or secrets/.",
-      target: "All Sessions",
-    },
-    {
-      name: "Confidence Threshold Gate",
-      type: "REQUIRE_HUMAN",
-      status: "ACTIVE",
-      description: "Requires human review whenever AI model confidence drops below 0.85.",
-      target: "All Decisions",
-    },
-    {
-      name: "Session Cycle Loop Ceiling",
-      type: "HARD_LIMIT",
-      status: "ACTIVE",
-      description:
-        "Escalates to human operator if session exceeds 5 conversation/correction cycles to prevent recursion.",
-      target: "Session Watcher",
-    },
-  ];
+export default async function PoliciesPage() {
+  const config = getConfig();
+  const db = getDatabase(config.DATABASE_URL);
+  const rows = await db
+    .select({
+      id: policies.id,
+      name: policies.name,
+      version: policies.version,
+      description: policies.description,
+      rules: policies.rules,
+      enabled: policies.enabled,
+    })
+    .from(policies)
+    .orderBy(sql`name asc`);
+
+  const policyRules = rows.map((p) => {
+    const rules = (p.rules ?? {}) as Record<string, unknown>;
+    return {
+      name: p.name,
+      type: (rules.ruleType as string) ?? "POLICY",
+      status: p.enabled ? "ACTIVE" : "DISABLED",
+      description: p.description ?? "",
+      target: (rules.target as string) ?? `v${p.version}`,
+    };
+  });
 
   return (
     <div className="space-y-6">

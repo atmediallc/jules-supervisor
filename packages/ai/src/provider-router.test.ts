@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Decision, DecisionAction } from "@jules/core";
+import { startMockOpenAiServer } from "@jules/test-utils";
 import { CircuitBreaker } from "./circuit-breaker.js";
+import { OpenAiDecisionProvider } from "./openai-provider.js";
 import { standardCapabilities } from "./provider-capabilities.js";
 import { DefaultProviderRouter, ProviderEntry } from "./provider-router.js";
 import { AiDecisionResponse, BuiltContext, IAiDecisionProvider } from "./types.js";
@@ -210,5 +212,186 @@ describe("ProviderRouter failover matrix", () => {
     const snap = router.healthSnapshot();
     expect(snap[0]!.name).toBe("primary");
     expect(snap[0]!.state).toBe("OPEN");
+  });
+});
+
+// Real-HTTP failover: the router must fail over between genuine endpoints via
+// the actual OpenAI HTTP client, not just fake provider objects.
+describe("ProviderRouter real HTTP failover", () => {
+  it("fails over from a 500-ing primary to a healthy fallback", async () => {
+    const primary = await startMockOpenAiServer(["http-500"]);
+    const fallback = await startMockOpenAiServer(["ok"]);
+    try {
+      const router = new DefaultProviderRouter({
+        providers: [
+          {
+            provider: new OpenAiDecisionProvider(
+              {
+                baseUrl: primary.baseUrl,
+                apiKey: "test-key",
+                model: "primary-model",
+                timeoutMs: 2000,
+                allowInsecureLocal: true,
+                trustedInternalHosts: ["127.0.0.1", "localhost"],
+              },
+              "primary",
+            ),
+            capabilities: standardCapabilities({
+              model: "primary-model",
+              timeoutMs: 2000,
+              maxContextTokens: 128_000,
+            }),
+            health: "HEALTHY",
+          },
+          {
+            provider: new OpenAiDecisionProvider(
+              {
+                baseUrl: fallback.baseUrl,
+                apiKey: "test-key",
+                model: "fallback-model",
+                timeoutMs: 2000,
+                allowInsecureLocal: true,
+                trustedInternalHosts: ["127.0.0.1", "localhost"],
+              },
+              "fallback",
+            ),
+            capabilities: standardCapabilities({
+              model: "fallback-model",
+              timeoutMs: 2000,
+              maxContextTokens: 128_000,
+            }),
+            health: "HEALTHY",
+          },
+        ],
+        maxRetries: 1,
+      });
+
+      const res = await router.decide(context);
+      expect(res.provider).toBe("fallback");
+      expect(primary.requestCount).toBe(2); // retryable 500 retried once
+      expect(fallback.requestCount).toBe(1);
+
+      const detailed = await router.decideWithAttempts(context);
+      expect(detailed.attempts.some((a) => a.status === "FAILED")).toBe(true);
+      expect(detailed.attempts.some((a) => a.status === "SUCCESS")).toBe(true);
+    } finally {
+      await primary.close();
+      await fallback.close();
+    }
+  });
+
+  it("falls back immediately on permanent auth failure (no pointless retries)", async () => {
+    const primary = await startMockOpenAiServer(["http-401"]);
+    const fallback = await startMockOpenAiServer(["ok"]);
+    try {
+      const router = new DefaultProviderRouter({
+        providers: [
+          {
+            provider: new OpenAiDecisionProvider(
+              {
+                baseUrl: primary.baseUrl,
+                apiKey: "bad-key",
+                model: "primary-model",
+                timeoutMs: 2000,
+                allowInsecureLocal: true,
+                trustedInternalHosts: ["127.0.0.1", "localhost"],
+              },
+              "primary",
+            ),
+            capabilities: standardCapabilities({
+              model: "primary-model",
+              timeoutMs: 2000,
+              maxContextTokens: 128_000,
+            }),
+            health: "HEALTHY",
+          },
+          {
+            provider: new OpenAiDecisionProvider(
+              {
+                baseUrl: fallback.baseUrl,
+                apiKey: "test-key",
+                model: "fallback-model",
+                timeoutMs: 2000,
+                allowInsecureLocal: true,
+                trustedInternalHosts: ["127.0.0.1", "localhost"],
+              },
+              "fallback",
+            ),
+            capabilities: standardCapabilities({
+              model: "fallback-model",
+              timeoutMs: 2000,
+              maxContextTokens: 128_000,
+            }),
+            health: "HEALTHY",
+          },
+        ],
+        maxRetries: 3,
+      });
+
+      const res = await router.decide(context);
+      expect(res.provider).toBe("fallback");
+      expect(primary.requestCount).toBe(1); // 401 never retried
+      expect(fallback.requestCount).toBe(1);
+    } finally {
+      await primary.close();
+      await fallback.close();
+    }
+  });
+
+  it("treats a malformed (non-JSON) response as output failure and falls back", async () => {
+    const primary = await startMockOpenAiServer(["malformed"]);
+    const fallback = await startMockOpenAiServer(["ok"]);
+    try {
+      const router = new DefaultProviderRouter({
+        providers: [
+          {
+            provider: new OpenAiDecisionProvider(
+              {
+                baseUrl: primary.baseUrl,
+                apiKey: "test-key",
+                model: "primary-model",
+                timeoutMs: 2000,
+                allowInsecureLocal: true,
+                trustedInternalHosts: ["127.0.0.1", "localhost"],
+              },
+              "primary",
+            ),
+            capabilities: standardCapabilities({
+              model: "primary-model",
+              timeoutMs: 2000,
+              maxContextTokens: 128_000,
+            }),
+            health: "HEALTHY",
+          },
+          {
+            provider: new OpenAiDecisionProvider(
+              {
+                baseUrl: fallback.baseUrl,
+                apiKey: "test-key",
+                model: "fallback-model",
+                timeoutMs: 2000,
+                allowInsecureLocal: true,
+                trustedInternalHosts: ["127.0.0.1", "localhost"],
+              },
+              "fallback",
+            ),
+            capabilities: standardCapabilities({
+              model: "fallback-model",
+              timeoutMs: 2000,
+              maxContextTokens: 128_000,
+            }),
+            health: "HEALTHY",
+          },
+        ],
+        maxRetries: 0,
+      });
+
+      const res = await router.decide(context);
+      expect(res.provider).toBe("fallback");
+      expect(primary.requestCount).toBe(1);
+    } finally {
+      await primary.close();
+      await fallback.close();
+    }
   });
 });

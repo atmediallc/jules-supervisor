@@ -10,6 +10,9 @@ export interface OpenAiProviderConfig {
   model: string;
   timeoutMs?: number;
   maxTokens?: number;
+  /** SDK-level retries. Default 0: the ProviderRouter owns retry policy
+   *  (retrying inside the SDK would multiply against router retries). */
+  maxRetries?: number;
   allowInsecureLocal?: boolean;
   trustedInternalHosts?: string[];
 }
@@ -49,6 +52,7 @@ export class OpenAiDecisionProvider implements IAiDecisionProvider {
       baseURL: baseUrl,
       apiKey: config.apiKey,
       timeout: this.timeoutMs,
+      maxRetries: config.maxRetries ?? 0,
     });
   }
 

@@ -61,6 +61,32 @@ export function createAiProvider(
     });
   }
 
+  // Ordered fallback providers (e.g. OmniRoute as a secondary). Each is a
+  // distinct OpenAI-compatible endpoint; all are registered as secondary
+  // entries so the router fails over correctly when the primary is unusable.
+  for (const f of config.AI_FALLBACK_PROVIDERS ?? []) {
+    providers.push({
+      provider: new OpenAiDecisionProvider(
+        {
+          baseUrl: f.baseUrl,
+          apiKey: f.apiKey,
+          model: f.model,
+          timeoutMs: config.AI_TIMEOUT_MS,
+          maxTokens: config.AI_MAX_TOKENS,
+          allowInsecureLocal: config.ALLOW_INSECURE_LOCAL_ENDPOINTS,
+          trustedInternalHosts: config.TRUSTED_INTERNAL_AI_HOSTS,
+        },
+        f.name,
+      ),
+      capabilities: standardCapabilities({
+        model: f.model,
+        timeoutMs: config.AI_TIMEOUT_MS,
+        maxContextTokens: opts.maxContextTokens ?? 128_000,
+      }),
+      health: "HEALTHY",
+    });
+  }
+
   return new DefaultProviderRouter({
     providers,
     maxRetries: config.MAX_AI_RETRIES,

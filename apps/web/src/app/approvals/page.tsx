@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, XCircle, Edit3 } from "lucide-react";
 
 interface ApprovalItem {
@@ -15,30 +15,22 @@ interface ApprovalItem {
 }
 
 export default function ApprovalsPage() {
-  const [approvals, setApprovals] = useState<ApprovalItem[]>([
-    {
-      id: "appr_001",
-      sessionId: "ses_test_002",
-      action: "APPROVE_PLAN",
-      risk: "high",
-      confidence: 0.91,
-      reason:
-        "Plan introduces database schema migration for MFA. Touches schema and migrations folder.",
-      proposedResponse: "Plan approved. Ensure rollback migration script is included.",
-      createdAt: "2026-08-27 10:18:22",
-    },
-    {
-      id: "appr_002",
-      sessionId: "ses_test_001",
-      action: "RESPOND",
-      risk: "medium",
-      confidence: 0.88,
-      reason: "Proposed answer defines rate limiting strategy on user ID and IP.",
-      proposedResponse:
-        "Implement rate limiting per authenticated user ID with fallback to IP address.",
-      createdAt: "2026-08-27 10:20:05",
-    },
-  ]);
+  const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
+
+  useEffect(() => {
+    fetch("/api/approvals")
+      .then((res) => (res.ok ? res.json() : { approvals: [] }))
+      .then((data) => {
+        const list = (data.approvals ?? []) as ApprovalItem[];
+        setApprovals(
+          list.map((a) => ({
+            ...a,
+            createdAt: new Date(a.createdAt).toLocaleString(),
+          })),
+        );
+      })
+      .catch(() => setApprovals([]));
+  }, []);
 
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);

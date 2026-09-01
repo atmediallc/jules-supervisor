@@ -1,18 +1,57 @@
 import { Activity, Cpu, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import Link from "next/link";
+import { getConfig } from "@jules/config";
+import {
+  getDatabase,
+  approvalRequests,
+  decisions,
+  sql,
+  SessionRepository,
+} from "@jules/db";
 
 export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const config = getConfig();
+  const db = getDatabase(config.DATABASE_URL);
+  const sessionsRepo = new SessionRepository(db);
+
+  const allSessions = await sessionsRepo.list(500);
+  const activeCount = allSessions.filter(
+    (s) => !["COMPLETED", "CANCELLED", "FAILED"].includes(s.state),
+  ).length;
+  const [pendingCount, todayCount, autoCount, blockedCount, avgRow] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(approvalRequests)
+      .where(sql`status = 'PENDING'`),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(decisions)
+      .where(sql`created_at >= now() - interval '24 hours'`),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(decisions)
+      .where(sql`execution_state = 'EXECUTED'`),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(decisions)
+      .where(sql`execution_state = 'BLOCKED'`),
+    db
+      .select({ avg: sql<number>`coalesce(avg(ai_latency_ms), 0)::int` })
+      .from(decisions)
+      .where(sql`created_at >= now() - interval '24 hours'`),
+  ]);
+
   const stats = {
-    activeSessions: 3,
-    awaitingFeedback: 1,
-    awaitingPlanApproval: 1,
-    pendingHumanReviews: 2,
-    decisionsToday: 42,
-    autoExecuted: 14,
-    blockedDecisions: 2,
-    avgLatencyMs: 840,
+    activeSessions: activeCount,
+    awaitingFeedback: allSessions.filter((s) => s.state === "AWAITING_USER_INPUT").length,
+    awaitingPlanApproval: allSessions.filter((s) => s.state === "AWAITING_PLAN_APPROVAL").length,
+    pendingHumanReviews: pendingCount[0]?.count ?? 0,
+    decisionsToday: todayCount[0]?.count ?? 0,
+    autoExecuted: autoCount[0]?.count ?? 0,
+    blockedDecisions: blockedCount[0]?.count ?? 0,
+    avgLatencyMs: avgRow[0]?.avg ?? 0,
   };
 
   return (
@@ -95,51 +134,50 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-semibold text-white">Active Jules Sessions</h3>
-            <span className="text-xs text-slate-400 font-mono">Live Ingestion</span>
+            <span className="text-xs text-slate-400 font-mono">Live</span>
           </div>
 
           <div className="space-y-3">
-            <div className="p-4 bg-slate-950/70 rounded-lg border border-slate-800/80 flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-indigo-400">ses_test_001</span>
-                  <span className="text-xs font-semibold text-white">owner/repo (main)</span>
-                  <span className="px-2 py-0.5 text-[10px] font-mono rounded bg-amber-950 text-amber-300 border border-amber-800">
-                    AWAITING_USER_INPUT
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 line-clamp-1">
-                  Please add Redis token bucket rate limiting to our auth endpoints
-                </p>
-              </div>
-              <Link
-                href="/sessions"
-                className="text-xs text-indigo-400 hover:text-indigo-300 font-medium px-3 py-1.5 rounded bg-slate-900 border border-slate-800"
-              >
-                Inspect
-              </Link>
-            </div>
-
-            <div className="p-4 bg-slate-950/70 rounded-lg border border-slate-800/80 flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-indigo-400">ses_test_002</span>
-                  <span className="text-xs font-semibold text-white">owner/repo (feat/db)</span>
-                  <span className="px-2 py-0.5 text-[10px] font-mono rounded bg-purple-950 text-purple-300 border border-purple-800">
-                    AWAITING_PLAN_APPROVAL
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 line-clamp-1">
-                  Migrate user table to add multi-factor authentication column
-                </p>
-              </div>
-              <Link
-                href="/sessions"
-                className="text-xs text-indigo-400 hover:text-indigo-300 font-medium px-3 py-1.5 rounded bg-slate-900 border border-slate-800"
-              >
-                Inspect
-              </Link>
-            </div>
+            {allSessions
+              .filter((s) => !["COMPLETED", "CANCELLED", "FAILED"].includes(s.state))
+              .slice(0, 10)
+              .map((s) => {
+                const stateColor =
+                  s.state === "AWAITING_USER_INPUT"
+                    ? "bg-amber-950 text-amber-300 border-amber-800"
+                    : s.state === "AWAITING_PLAN_APPROVAL"
+                      ? "bg-purple-950 text-purple-300 border-purple-800"
+                      : "bg-emerald-950 text-emerald-300 border-emerald-800";
+                return (
+                  <div
+                    key={s.id}
+                    className="p-4 bg-slate-950/70 rounded-lg border border-slate-800/80 flex items-center justify-between"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-indigo-400">{s.id}</span>
+                        <span className="text-xs font-semibold text-white">
+                          {s.repository} ({s.branch})
+                        </span>
+                        <span className={`px-2 py-0.5 text-[10px] font-mono rounded border ${stateColor}`}>
+                          {s.state}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 line-clamp-1">{s.prompt}</p>
+                    </div>
+                    <Link
+                      href="/sessions"
+                      className="text-xs text-indigo-400 hover:text-indigo-300 font-medium px-3 py-1.5 rounded bg-slate-900 border border-slate-800"
+                    >
+                      Inspect
+                    </Link>
+                  </div>
+                );
+              })}
+            {allSessions.filter((s) => !["COMPLETED", "CANCELLED", "FAILED"].includes(s.state))
+              .length === 0 && (
+              <p className="text-xs text-slate-500">No active sessions.</p>
+            )}
           </div>
         </div>
 
@@ -147,23 +185,11 @@ export default function DashboardPage() {
         <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-4">
           <h3 className="text-base font-semibold text-white">Policy & Risk Status</h3>
 
-          <div className="space-y-3 font-mono text-xs">
-            <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80 flex items-center justify-between">
-              <span className="text-emerald-400">LOW RISK (Safe)</span>
-              <span className="text-white font-bold">28</span>
-            </div>
-            <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80 flex items-center justify-between">
-              <span className="text-amber-400">MEDIUM RISK (Review)</span>
-              <span className="text-white font-bold">12</span>
-            </div>
-            <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80 flex items-center justify-between">
-              <span className="text-rose-400">HIGH RISK (Escalated)</span>
-              <span className="text-white font-bold">2</span>
-            </div>
-            <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80 flex items-center justify-between">
-              <span className="text-red-500">CRITICAL (Vetoed)</span>
-              <span className="text-white font-bold">0</span>
-            </div>
+          <div className="space-y-3 font-mono text-xs" id="risk-dist">
+            <RiskStat label="LOW RISK (Safe)" risk="low" db={db} />
+            <RiskStat label="MEDIUM RISK (Review)" risk="medium" db={db} />
+            <RiskStat label="HIGH RISK (Escalated)" risk="high" db={db} />
+            <RiskStat label="CRITICAL (Vetoed)" risk="critical" db={db} />
           </div>
 
           <div className="pt-2 border-t border-slate-800 text-xs text-slate-400">
@@ -174,6 +200,21 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+async function RiskStat({ label, risk, db }: { label: string; risk: string; db: ReturnType<typeof getDatabase> }) {
+  const row = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(decisions)
+    .where(sql`risk = ${risk}`);
+  const count = row[0]?.count ?? 0;
+  const color = risk === "low" ? "text-emerald-400" : risk === "medium" ? "text-amber-400" : risk === "high" ? "text-rose-400" : "text-red-500";
+  return (
+    <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80 flex items-center justify-between">
+      <span className={color}>{label}</span>
+      <span className="text-white font-bold">{count}</span>
     </div>
   );
 }

@@ -22,18 +22,17 @@ export default function middleware(
   const path = req.nextUrl.pathname;
   const ip = clientIpFromHeaders(req.headers);
 
-  // Brute-force protection: throttle the credentials callback and the login
-  // page itself (10 attempts/min per IP). Rate limiting is applied BEFORE the
-  // NextAuth flow, so repeated failed logins cannot hammer the callback.
-  if (path === "/api/auth/callback/credentials" || path === "/login") {
+  // Brute-force protection: throttle the credentials callback (10 attempts/min
+  // per IP). Rate limiting is applied BEFORE the NextAuth flow, so repeated
+  // failed logins cannot hammer the callback. The /login page itself is NOT
+  // rate-limited: redirecting it to /login?error=... would re-enter middleware
+  // and loop forever on a rate-limited IP.
+  if (path === "/api/auth/callback/credentials") {
     if (isRateLimited(rateLimitKey("auth", ip), "auth")) {
-      if (path.startsWith("/api/")) {
-        return NextResponse.json(
-          { error: "Too many attempts. Please wait before trying again." },
-          { status: 429 },
-        );
-      }
-      return NextResponse.redirect(new URL("/login?error=RateLimited", req.url));
+      return NextResponse.json(
+        { error: "Too many attempts. Please wait before trying again." },
+        { status: 429 },
+      );
     }
   }
 

@@ -3,5 +3,6 @@ export * from "./events.js";
 export * from "./execution-mode.js";
 export * from "./risk.js";
 export * from "./loop-detector.js";
+export * from "./correction-loop.js";
 export * from "./budget.js";
 export * from "./memory.js";

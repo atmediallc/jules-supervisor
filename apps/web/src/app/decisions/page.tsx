@@ -1,36 +1,13 @@
+import { getConfig } from "@jules/config";
+import { getDatabase, DecisionRepository } from "@jules/db";
+
 export const dynamic = "force-dynamic";
 
-export default function DecisionsPage() {
-  const decisions = [
-    {
-      id: "dec_9876543210ab",
-      sessionId: "ses_test_001",
-      activityId: "act_101",
-      action: "RESPOND",
-      risk: "low",
-      confidence: 0.92,
-      reason: "Standard architectural best practice for API rate limiting.",
-      provider: "omniroute",
-      model: "gpt-4o",
-      contextDigest: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      executionState: "DRY_RUN_COMPLETED",
-      createdAt: "2026-08-27 10:15:35",
-    },
-    {
-      id: "dec_1234567890cd",
-      sessionId: "ses_test_002",
-      activityId: "act_201",
-      action: "APPROVE_PLAN",
-      risk: "high",
-      confidence: 0.95,
-      reason: "Plan touches database migration. Escalated to human review queue.",
-      provider: "omniroute",
-      model: "gpt-4o",
-      contextDigest: "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
-      executionState: "AWAITING_APPROVAL",
-      createdAt: "2026-08-27 09:42:20",
-    },
-  ];
+export default async function DecisionsPage() {
+  const config = getConfig();
+  const db = getDatabase(config.DATABASE_URL);
+  const repo = new DecisionRepository(db);
+  const decisions = await repo.list(100);
 
   return (
     <div className="space-y-6">
@@ -79,7 +56,7 @@ export default function DecisionsPage() {
               </div>
               <div className="text-right text-xs font-mono text-slate-400">
                 <div>Model: {dec.model}</div>
-                <div>{dec.createdAt}</div>
+                <div>{new Date(dec.createdAt).toLocaleString()}</div>
               </div>
             </div>
 

@@ -1,26 +1,23 @@
+import { getConfig } from "@jules/config";
+import { getDatabase, AuditRepository } from "@jules/db";
+
 export const dynamic = "force-dynamic";
 
-export default function AuditPage() {
-  const auditLogs = [
-    {
-      id: "aud_001",
-      actor: "SUPERVISOR_AI",
-      actorType: "SYSTEM",
-      action: "DECISION_RESPOND",
-      targetId: "ses_test_001",
-      timestamp: "2026-08-27 10:15:35",
-      details: "Generated recommendation to use user ID for rate limiting.",
-    },
-    {
-      id: "aud_002",
-      actor: "SUPERVISOR_AI",
-      actorType: "SYSTEM",
-      action: "DECISION_APPROVE_PLAN",
-      targetId: "ses_test_002",
-      timestamp: "2026-08-27 09:42:20",
-      details: "Plan review triggered. Escalated to Human Approval Queue due to migration path.",
-    },
-  ];
+export default async function AuditPage() {
+  const config = getConfig();
+  const db = getDatabase(config.DATABASE_URL);
+  const repo = new AuditRepository(db);
+  const auditLogs = (await repo.list(200)).map((ev) => ({
+    id: ev.id,
+    actor: ev.actor,
+    actorType: ev.actorType,
+    action: ev.action,
+    targetId: ev.targetId,
+    timestamp: ev.timestamp.toISOString(),
+    details:
+      (ev.metadata?.details as string | undefined) ??
+      (ev.afterState ? JSON.stringify(ev.afterState) : ""),
+  }));
 
   return (
     <div className="space-y-6">
@@ -50,7 +47,9 @@ export default function AuditPage() {
                 </div>
                 <p className="text-slate-300 text-[11px]">{log.details}</p>
               </div>
-              <span className="text-[10px] text-slate-500">{log.timestamp}</span>
+              <span className="text-[10px] text-slate-500">
+                    {new Date(log.timestamp).toLocaleString()}
+                  </span>
             </div>
           ))}
         </div>

@@ -22,6 +22,8 @@ export interface MetricSnapshot {
   knowledgeQueriesTotal: number;
   knowledgeItemsReturnedTotal: number;
   memoryRetrievalFailuresTotal: number;
+  /** Correction loop: corrections dispatched to Jules. */
+  correctionsSubmittedTotal: number;
 }
 
 class MetricsRegistry {
@@ -45,6 +47,8 @@ class MetricsRegistry {
   private knowledgeQueries = 0;
   private knowledgeItemsReturned = 0;
   private memoryRetrievalFailures = 0;
+  // Correction loop
+  private correctionsSubmitted = 0;
 
   public recordJulesLatency(ms: number): void {
     this.julesLatencies.push(ms);
@@ -132,6 +136,11 @@ class MetricsRegistry {
     this.memoryRetrievalFailures++;
   }
 
+  /** Record a correction instruction dispatched to Jules (correction loop). */
+  public incrementCorrectionSubmitted(): void {
+    this.correctionsSubmitted++;
+  }
+
   private summarize(data: number[]) {
     if (data.length === 0) return { count: 0, avg: 0, min: 0, max: 0 };
     const sum = data.reduce((a, b) => a + b, 0);
@@ -164,6 +173,7 @@ class MetricsRegistry {
       knowledgeQueriesTotal: this.knowledgeQueries,
       knowledgeItemsReturnedTotal: this.knowledgeItemsReturned,
       memoryRetrievalFailuresTotal: this.memoryRetrievalFailures,
+      correctionsSubmittedTotal: this.correctionsSubmitted,
     };
   }
 
@@ -238,6 +248,7 @@ class MetricsRegistry {
     );
     lines.push("# TYPE jules_memory_retrieval_failures_total counter");
     lines.push(`jules_memory_retrieval_failures_total ${this.memoryRetrievalFailures}`);
+    lines.push(`jules_corrections_submitted_total ${this.correctionsSubmitted}`);
 
     // Jules Latency
     const julesSummary = this.summarize(this.julesLatencies);

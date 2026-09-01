@@ -1,62 +1,34 @@
+import { getConfig } from "@jules/config";
+import { getDatabase, SessionRepository, ActivityRepository } from "@jules/db";
+
 export const dynamic = "force-dynamic";
 
-export default function SessionsPage() {
-  const mockSessions = [
-    {
-      id: "ses_test_001",
-      repository: "octocat/hello-world",
-      branch: "main",
-      prompt: "Please add Redis token bucket rate limiting to our auth endpoints",
-      state: "AWAITING_USER_INPUT",
-      supervisorStatus: "PENDING_DECISION",
-      cycleCount: 1,
-      createdAt: "2026-08-27 10:15:00",
-      activities: [
-        {
-          id: "act_101",
-          type: "AGENT_MESSAGE",
-          content: "Should rate limiting apply per IP address or per authenticated user ID?",
-          time: "10:15:30",
-        },
-      ],
-    },
-    {
-      id: "ses_test_002",
-      repository: "octocat/hello-world",
-      branch: "feat/db",
-      prompt: "Migrate user table to add multi-factor authentication column",
-      state: "AWAITING_PLAN_APPROVAL",
-      supervisorStatus: "AWAITING_APPROVAL",
-      cycleCount: 1,
-      createdAt: "2026-08-27 09:40:00",
-      activities: [
-        {
-          id: "act_201",
-          type: "PLAN_GENERATED",
-          content: "Step 1: Create migration 0004_add_mfa.sql\nStep 2: Update schema definitions",
-          time: "09:42:15",
-        },
-      ],
-    },
-    {
-      id: "ses_test_003",
-      repository: "octocat/hello-world",
-      branch: "fix/typo",
-      prompt: "Fix typos in documentation and comments",
-      state: "COMPLETED",
-      supervisorStatus: "RESOLVED",
-      cycleCount: 2,
-      createdAt: "2026-08-27 08:20:00",
-      activities: [
-        {
-          id: "act_301",
-          type: "PATCH_CREATED",
-          content: "Updated docs/README.md with corrected spelling.",
-          time: "08:22:10",
-        },
-      ],
-    },
-  ];
+export default async function SessionsPage() {
+  const config = getConfig();
+  const db = getDatabase(config.DATABASE_URL);
+  const sessionsRepo = new SessionRepository(db);
+  const activityRepo = new ActivityRepository(db);
+
+  const sessions = await sessionsRepo.list(50);
+
+  const rows = await Promise.all(
+    sessions.map(async (session) => ({
+      id: session.id,
+      repository: session.repository,
+      branch: session.branch,
+      prompt: session.prompt,
+      state: session.state,
+      supervisorStatus: session.supervisorStatus,
+      cycleCount: session.cycleCount,
+      createdAt: session.createdAt.toISOString(),
+      activities: (await activityRepo.listBySession(session.id, "desc")).slice(0, 10).map((a) => ({
+        id: a.id,
+        type: a.type,
+        content: a.content ?? "",
+        time: a.createdAt.toISOString(),
+      })),
+    })),
+  );
 
   return (
     <div className="space-y-6">
@@ -70,7 +42,7 @@ export default function SessionsPage() {
       </div>
 
       <div className="space-y-4">
-        {mockSessions.map((session) => (
+        {rows.map((session) => (
           <div
             key={session.id}
             className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-4"
@@ -98,7 +70,7 @@ export default function SessionsPage() {
               </div>
               <div className="text-right text-xs font-mono text-slate-400">
                 <div>Cycles: {session.cycleCount}</div>
-                <div>{session.createdAt}</div>
+                <div>{new Date(session.createdAt).toLocaleString()}</div>
               </div>
             </div>
 
@@ -119,13 +91,24 @@ export default function SessionsPage() {
                         {act.content}
                       </p>
                     </div>
-                    <span className="text-[10px] font-mono text-slate-500">{act.time}</span>
+                    <span className="text-[10px] font-mono text-slate-500">
+                      {new Date(act.time).toLocaleString()}
+                    </span>
                   </div>
                 ))}
+                {session.activities.length === 0 && (
+                  <p className="text-xs text-slate-500">No activities recorded yet.</p>
+                )}
               </div>
             </div>
           </div>
         ))}
+        {rows.length === 0 && (
+          <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 text-sm text-slate-400">
+            No sessions recorded yet. The supervisor will create sessions as Jules activity is
+            observed.
+          </div>
+        )}
       </div>
     </div>
   );

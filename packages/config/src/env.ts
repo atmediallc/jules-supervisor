@@ -75,6 +75,49 @@ export const EnvSchema = z.object({
     .default("localhost,127.0.0.1,omniroute")
     .transform((str) => str.split(",").map((s) => s.trim())),
 
+  // Optional ordered fallback providers for AI failover. JSON array of
+  // {name?, baseUrl, apiKey, model}. Each entry is wired as a secondary
+  // provider behind the primary; the ProviderRouter fails over in order.
+  // Empty/absent => single-provider mode (current default). OmniRoute can be
+  // supplied here as an OpenAI-compatible base-URL profile.
+  AI_FALLBACK_PROVIDERS: z
+    .string()
+    .default("[]")
+    .transform((str) => {
+      const trimmed = str.trim();
+      if (!trimmed) return [];
+      try {
+        const parsed: unknown = JSON.parse(trimmed);
+        if (!Array.isArray(parsed)) {
+          throw new Error("AI_FALLBACK_PROVIDERS must be a JSON array");
+        }
+        return parsed.map((p) => {
+          const item = p as {
+            name?: string;
+            baseUrl?: string;
+            apiKey?: string;
+            model?: string;
+          };
+          if (!item || typeof item !== "object") {
+            throw new Error("AI_FALLBACK_PROVIDERS entries must be objects");
+          }
+          if (!item.baseUrl || !item.apiKey || !item.model) {
+            throw new Error(
+              "AI_FALLBACK_PROVIDERS entries require baseUrl, apiKey, and model",
+            );
+          }
+          return {
+            name: item.name ?? "openai",
+            baseUrl: item.baseUrl,
+            apiKey: item.apiKey,
+            model: item.model,
+          };
+        });
+      } catch (err: unknown) {
+        throw new Error(`Invalid AI_FALLBACK_PROVIDERS: ${(err as Error).message}`);
+      }
+    }),
+
   // Persistence (PostgreSQL)
   DATABASE_URL: z
     .string()

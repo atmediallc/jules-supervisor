@@ -2,6 +2,7 @@ import { AiDecisionResponse, ContextBuilder, IAiDecisionProvider } from "@jules/
 import { AppConfig } from "@jules/config";
 import {
   BudgetUsage,
+  canSubmitCorrection,
   calculateDeterministicRisk,
   Decision,
   DecisionAction,
@@ -9,6 +10,7 @@ import {
   evaluateBudgetExhaustion,
   evaluateExecutionGate,
   ExecutionGateResult,
+  fingerprintDefect,
   LoopDetector,
 } from "@jules/core";
 import {
@@ -82,6 +84,8 @@ export class SupervisionPipeline {
   /** True when the worker is running DEGRADED (infra unavailable). In this
    * state mutation-capable decisions escalate to human review. */
   private degradedMode = false;
+  /** In-memory defect fingerprints per session (correction-loop dedup). */
+  private readonly sessionCorrectionFingerprints = new Map<string, Set<string>>();
 
   constructor(deps: PipelineDependencies) {
     this.config = deps.config;
@@ -517,6 +521,45 @@ export class SupervisionPipeline {
               message: proposedDecision.response,
               clientToken: idempotencyKey,
             });
+          } else if (proposedDecision.action === "REQUEST_CHANGES") {
+            // Correction loop re-submission: REQUEST_CHANGES dispatches a
+            // targeted correction instruction to Jules. Defect fingerprinting
+            // prevents sending the identical correction twice (infinite
+            // same-correction loop); the correction budget ceiling is enforced
+            // by the pre-AI budget gate.
+            const correctionInstruction = proposedDecision.response ?? "";
+            const fingerprints = this.fingerprintsFor(session.id);
+            const check = canSubmitCorrection({
+              correctionCount: fingerprints.size,
+              maxCorrections: this.config.BUDGET_MAX_CORRECTIONS_PER_SESSION,
+              priorFingerprints: fingerprints,
+              instruction: correctionInstruction,
+            });
+            if (!check.allowed) {
+              log.warn("Correction loop refused re-submission", {
+                sessionId: session.id,
+                decisionId,
+                reason: check.reason,
+              });
+              throw new Error(`Correction loop terminated: ${check.reason}`);
+            }
+            await this.julesClient.sendMessage(session.id, {
+              message: correctionInstruction,
+              clientToken: idempotencyKey,
+            });
+            fingerprints.add(fingerprintDefect(correctionInstruction));
+            // Persist the correction against the durable session budget so the
+            // correction ceiling survives worker restarts (correction loop
+            // termination is not merely in-memory).
+            await this.budgetRepo
+              .incrementCorrections(session.id)
+              .catch((err: unknown) => {
+                log.warn("Could not persist correction count to budget", {
+                  sessionId: session.id,
+                  err: (err as Error).message,
+                });
+              });
+            metrics.incrementCorrectionSubmitted();
           }
 
           await this.decisionRepo.markExecuted(decisionId, "EXECUTED");
@@ -562,5 +605,15 @@ export class SupervisionPipeline {
       this.config.AI_COST_PER_1K_PROMPT_TOKENS_USD,
       this.config.AI_COST_PER_1K_COMPLETION_TOKENS_USD,
     );
+  }
+
+  /** Lazy per-session set of defect fingerprints (correction-loop dedup). */
+  private fingerprintsFor(sessionId: string): Set<string> {
+    let set = this.sessionCorrectionFingerprints.get(sessionId);
+    if (!set) {
+      set = new Set();
+      this.sessionCorrectionFingerprints.set(sessionId, set);
+    }
+    return set;
   }
 }

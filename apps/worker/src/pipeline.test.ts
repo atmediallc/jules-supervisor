@@ -706,3 +706,138 @@ describe("SupervisionPipeline — P1 Memory Adversarial (Fases 47-70)", () => {
     expect(d1[0]!.precedentDecisionIds).toEqual(d2[0]!.precedentDecisionIds);
   });
 });
+
+describe("SupervisionPipeline — Correction Loop (Phase 30-44)", () => {
+  it("auto-executes REQUEST_CHANGES as a corrected instruction to Jules", async () => {
+    const { pipeline, store, julesClient, aiProvider } = setupTestPipeline("FULL_AUTO");
+
+    aiProvider.customDecision = {
+      action: "REQUEST_CHANGES",
+      response: "Fix the failing test and re-run the suite",
+      risk: "low",
+      confidence: 0.95,
+      reason: "Defect detected in agent output",
+      evidence: ["test suite failure"],
+      concerns: [],
+    };
+
+    const session = createMockSession({ id: "ses_corr_001", state: "AWAITING_USER_INPUT" });
+    const activity = createMockActivity({ id: "act_corr_001", sessionId: "ses_corr_001" });
+    julesClient.sessions.set(session.id, session);
+
+    const result = await pipeline.processActivity({ session, activity });
+
+    expect(result?.action).toBe("REQUEST_CHANGES");
+    expect(result?.executed).toBe(true);
+
+    // The correction instruction must have been dispatched to Jules.
+    expect(julesClient.sentMessages).toHaveLength(1);
+    expect(julesClient.sentMessages[0]!.request.message).toBe(
+      "Fix the failing test and re-run the suite",
+    );
+
+    const decisions = await store.listDecisions();
+    expect(decisions[0]!.executionState).toBe("EXECUTED");
+  });
+
+  it("refuses to re-send the identical correction within the same session (fingerprint dedup)", async () => {
+    const { pipeline, store, julesClient, aiProvider } = setupTestPipeline("FULL_AUTO");
+
+    aiProvider.customDecision = {
+      action: "REQUEST_CHANGES",
+      response: "Please fix the exact same defect again",
+      risk: "low",
+      confidence: 0.95,
+      reason: "Defect still present",
+      evidence: [],
+      concerns: [],
+    };
+
+    const session = createMockSession({ id: "ses_corr_002", state: "AWAITING_USER_INPUT" });
+    const activity = createMockActivity({ id: "act_corr_002", sessionId: "ses_corr_002" });
+    julesClient.sessions.set(session.id, session);
+
+    // First identical instruction: fingerprint recorded, correction dispatched.
+    await pipeline.processActivity({ session, activity });
+    expect(julesClient.sentMessages).toHaveLength(1);
+
+    // Second identical instruction on the SAME session: must NEVER dispatch a
+    // second correction. The pipeline's loop detector (2 identical prompts)
+    // escalates to human review before the AI can re-issue it — this IS the
+    // correction-loop termination for identical corrections.
+    const sessionRetry = createMockSession({ id: "ses_corr_002", state: "AWAITING_USER_INPUT" });
+    const activity2 = createMockActivity({ id: "act_corr_002b", sessionId: "ses_corr_002" });
+    const retry = await pipeline.processActivity({ session: sessionRetry, activity: activity2 });
+
+    // Escalated to a human — the loop was terminated, not re-sent.
+    expect(retry?.action).toBe("REQUEST_HUMAN");
+    expect(julesClient.sentMessages).toHaveLength(1);
+
+    // Only one correction ever dispatched to Jules.
+    expect(julesClient.sentMessages).toHaveLength(1);
+
+    // The refused attempt must NOT have created a second executed decision.
+    const decisions = await store.listDecisions();
+    expect(decisions).toHaveLength(2);
+    expect(
+      decisions.filter((d) => d.executionState === "EXECUTED"),
+    ).toHaveLength(1);
+  });
+
+  it("terminates the correction loop when the per-session ceiling is reached (budget gate)", async () => {
+    const { pipeline, store, julesClient, aiProvider } = setupTestPipeline("FULL_AUTO");
+
+    aiProvider.customDecision = {
+      action: "REQUEST_CHANGES",
+      response: "Correction request",
+      risk: "low",
+      confidence: 0.95,
+      reason: "Defect",
+      evidence: [],
+      concerns: [],
+    };
+
+    const session = createMockSession({ id: "ses_corr_003", state: "AWAITING_USER_INPUT" });
+    julesClient.sessions.set(session.id, session);
+
+    // Seed the persisted session budget with corrections already at 3/3.
+    await store.incrementBudgetCorrections("ses_corr_003");
+    await store.incrementBudgetCorrections("ses_corr_003");
+    await store.incrementBudgetCorrections("ses_corr_003");
+
+    const activity = createMockActivity({ id: "act_corr_003", sessionId: "ses_corr_003" });
+    const result = await pipeline.processActivity({ session, activity });
+
+    // Budget gate escalates to human review: NO correction dispatched to Jules.
+    expect(result?.action).toBe("REQUEST_HUMAN");
+    expect(julesClient.sentMessages).toHaveLength(0);
+
+    const decisions = await store.listDecisions();
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]!.executionState).toBe("AWAITING_APPROVAL");
+  });
+
+  it("persists a dispatched correction against the durable session budget", async () => {
+    const { pipeline, store, julesClient, aiProvider } = setupTestPipeline("FULL_AUTO");
+
+    aiProvider.customDecision = {
+      action: "REQUEST_CHANGES",
+      response: "Persist this correction",
+      risk: "low",
+      confidence: 0.95,
+      reason: "Defect",
+      evidence: [],
+      concerns: [],
+    };
+
+    const session = createMockSession({ id: "ses_corr_004", state: "AWAITING_USER_INPUT" });
+    const activity = createMockActivity({ id: "act_corr_004", sessionId: "ses_corr_004" });
+    julesClient.sessions.set(session.id, session);
+
+    await pipeline.processActivity({ session, activity });
+    expect(julesClient.sentMessages).toHaveLength(1);
+
+    const budget = await store.getBudgetBySession("ses_corr_004");
+    expect(budget?.corrections).toBe(1);
+  });
+});

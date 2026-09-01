@@ -8,6 +8,12 @@ export interface MetricSnapshot {
   blockedDecisionsTotal: number;
   julesErrorsTotal: Record<string, number>;
   aiErrorsTotal: Record<string, number>;
+  /** P1: provider-router failover events, keyed by bounded reason. */
+  aiFailoversTotal: Record<string, number>;
+  /** P1: runtime kill switch interlock events (pre-AI and pre-mutation blocks). */
+  safetyInterlocksTotal: number;
+  /** P1: mutation-capable decisions escalated to human review in DEGRADED mode. */
+  degradedEscalationsTotal: number;
   duplicateEventsPrevented: number;
   budgetExhaustionsTotal: number;
   /** P1: relational memory retrieval metrics. */
@@ -28,6 +34,9 @@ class MetricsRegistry {
   private blockedDecisions = 0;
   private julesErrors: Record<string, number> = {};
   private aiErrors: Record<string, number> = {};
+  private aiFailovers: Record<string, number> = {};
+  private safetyInterlocks = 0;
+  private degradedEscalations = 0;
   private duplicatesPrevented = 0;
   private budgetExhaustions = 0;
   // P1: relational memory metrics
@@ -76,8 +85,26 @@ class MetricsRegistry {
     this.aiErrors[errorType] = (this.aiErrors[errorType] || 0) + 1;
   }
 
+  /**
+   * Record a provider-router failover event. `reason` MUST come from a small
+   * fixed set to keep label cardinality bounded over long runs.
+   */
+  public incrementAiFailover(reason: string): void {
+    this.aiFailovers[reason] = (this.aiFailovers[reason] || 0) + 1;
+  }
+
   public incrementDuplicatePrevented(): void {
     this.duplicatesPrevented++;
+  }
+
+  /** Record a runtime kill switch interlock (an AI call or mutation refused). */
+  public incrementSafetyInterlock(): void {
+    this.safetyInterlocks++;
+  }
+
+  /** Record a mutation-capable decision escalated to human review in DEGRADED mode. */
+  public incrementDegradedEscalation(): void {
+    this.degradedEscalations++;
   }
 
   public incrementBudgetExhaustion(): void {
@@ -127,6 +154,9 @@ class MetricsRegistry {
       blockedDecisionsTotal: this.blockedDecisions,
       julesErrorsTotal: { ...this.julesErrors },
       aiErrorsTotal: { ...this.aiErrors },
+      aiFailoversTotal: { ...this.aiFailovers },
+      safetyInterlocksTotal: this.safetyInterlocks,
+      degradedEscalationsTotal: this.degradedEscalations,
       duplicateEventsPrevented: this.duplicatesPrevented,
       budgetExhaustionsTotal: this.budgetExhaustions,
       precedentQueriesTotal: this.precedentQueries,
@@ -225,6 +255,27 @@ class MetricsRegistry {
     lines.push("# TYPE jules_ai_latency_ms_avg gauge");
     lines.push(`jules_ai_latency_ms_avg ${aiSummary.avg}`);
 
+    // AI failovers (bounded reason set)
+    lines.push("# HELP jules_ai_failovers_total Total AI provider failover events by reason");
+    lines.push("# TYPE jules_ai_failovers_total counter");
+    for (const [reason, count] of Object.entries(this.aiFailovers)) {
+      lines.push(`jules_ai_failovers_total{reason="${reason}"} ${count}`);
+    }
+
+    // Safety interlocks (kill switch blocks)
+    lines.push(
+      "# HELP jules_safety_interlocks_total Total AI calls or mutations refused by the runtime kill switch",
+    );
+    lines.push("# TYPE jules_safety_interlocks_total counter");
+    lines.push(`jules_safety_interlocks_total ${this.safetyInterlocks}`);
+
+    // Degraded-mode escalations (mutation-capable decisions → human review)
+    lines.push(
+      "# HELP jules_degraded_escalations_total Mutation-capable decisions escalated to human review while degraded",
+    );
+    lines.push("# TYPE jules_degraded_escalations_total counter");
+    lines.push(`jules_degraded_escalations_total ${this.degradedEscalations}`);
+
     return lines.join("\n") + "\n";
   }
 
@@ -238,6 +289,9 @@ class MetricsRegistry {
     this.blockedDecisions = 0;
     this.julesErrors = {};
     this.aiErrors = {};
+    this.aiFailovers = {};
+    this.safetyInterlocks = 0;
+    this.degradedEscalations = 0;
     this.duplicatesPrevented = 0;
     this.budgetExhaustions = 0;
     this.precedentQueries = 0;

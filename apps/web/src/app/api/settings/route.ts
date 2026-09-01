@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getConfig } from "@jules/config";
 import { getDatabase, SystemSettingsRepository } from "@jules/db";
+import { logRouteError } from "../route-logger";
 
 /**
  * Admin Settings API — CRUD for system-wide configuration.
@@ -13,7 +14,7 @@ import { getDatabase, SystemSettingsRepository } from "@jules/db";
  */
 
 // ── Settings seed catalog: defines what keys exist, their defaults, categories, and secret flag ──
-export const SETTINGS_CATALOG: Record<
+const SETTINGS_CATALOG: Record<
   string,
   {
     defaultValue: string;
@@ -286,7 +287,7 @@ const BulkUpdateSchema = z.object({
   settings: z.array(UpdateSettingSchema).min(1).max(100),
 });
 
-export type SettingItem = {
+type SettingItem = {
   key: string;
   value: string; // masked for secrets
   rawValue: string | null; // actual value, only for non-secrets
@@ -354,7 +355,7 @@ export async function GET() {
 
     return NextResponse.json({ settings: items });
   } catch (err: unknown) {
-    console.error("GET /api/settings failed", err);
+    logRouteError("GET /api/settings", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -406,19 +407,7 @@ export async function PUT(req: NextRequest) {
       })),
     });
   } catch (err: unknown) {
-    console.error("PUT /api/settings failed", err);
+    logRouteError("PUT /api/settings", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
-}
-
-/** Helper to load DB settings as an override map (used by config loader) */
-export async function loadDbSettings(): Promise<Record<string, string>> {
-  try {
-    const config = getConfig();
-    const db = getDatabase(config.DATABASE_URL);
-    const repo = new SystemSettingsRepository(db);
-    return await repo.getAsMap();
-  } catch {
-    return {};
   }
 }

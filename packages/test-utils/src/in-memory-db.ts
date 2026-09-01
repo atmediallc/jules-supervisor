@@ -16,6 +16,8 @@ import {
   SessionInsert,
   SessionSelect,
   SessionRepository,
+  SyncCheckpointRecord,
+  SyncCheckpointRepository,
 } from "@jules/db";
 
 export class InMemoryRepositoryStore {
@@ -25,6 +27,8 @@ export class InMemoryRepositoryStore {
   public approvalRequests = new Map<string, ApprovalRequestSelect>();
   public auditEvents: AuditEventSelect[] = [];
   public sessionBudgets = new Map<string, SessionBudgetSelect>();
+  /** Reconciliation cursors, keyed by sessionId. */
+  public checkpoints = new Map<string, { sessionId: string; lastActivityId: string | null; nextPageToken: string | null; lastSyncedAt: Date }>();
 
   public clear(): void {
     this.sessions.clear();
@@ -33,6 +37,7 @@ export class InMemoryRepositoryStore {
     this.approvalRequests.clear();
     this.auditEvents = [];
     this.sessionBudgets.clear();
+    this.checkpoints.clear();
   }
 
   // Sessions
@@ -411,6 +416,7 @@ export function createMockRepositories(store: InMemoryRepositoryStore): {
   approvalRepo: ApprovalRepository;
   auditRepo: AuditRepository;
   budgetRepo: BudgetRepository;
+  checkpointRepo: SyncCheckpointRepository;
 } {
   return {
     sessionRepo: {
@@ -512,5 +518,26 @@ export function createMockRepositories(store: InMemoryRepositoryStore): {
       incrementCorrections: async (sessionId: string) =>
         store.incrementBudgetCorrections(sessionId),
     } as unknown as BudgetRepository,
+    checkpointRepo: {
+      getBySession: async (sessionId: string): Promise<SyncCheckpointRecord | null> =>
+        store.checkpoints.get(sessionId) ?? null,
+      upsert: async (
+        sessionId: string,
+        patch: { lastActivityId?: string | null; nextPageToken?: string | null },
+      ): Promise<SyncCheckpointRecord> => {
+        const existing = store.checkpoints.get(sessionId);
+        const record: SyncCheckpointRecord = {
+          sessionId,
+          lastActivityId: patch.lastActivityId ?? existing?.lastActivityId ?? null,
+          nextPageToken: patch.nextPageToken ?? existing?.nextPageToken ?? null,
+          lastSyncedAt: new Date(),
+        };
+        store.checkpoints.set(sessionId, record);
+        return record;
+      },
+      deleteBySession: async (sessionId: string): Promise<void> => {
+        store.checkpoints.delete(sessionId);
+      },
+    } as unknown as SyncCheckpointRepository,
   };
 }

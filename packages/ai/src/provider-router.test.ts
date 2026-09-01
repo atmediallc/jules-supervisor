@@ -1,0 +1,214 @@
+import { describe, expect, it } from "vitest";
+import { Decision, DecisionAction } from "@jules/core";
+import { CircuitBreaker } from "./circuit-breaker.js";
+import { standardCapabilities } from "./provider-capabilities.js";
+import { DefaultProviderRouter, ProviderEntry } from "./provider-router.js";
+import { AiDecisionResponse, BuiltContext, IAiDecisionProvider } from "./types.js";
+
+const okDecision: Decision = {
+  action: "RESPOND" as DecisionAction,
+  response: "ok",
+  risk: "low",
+  confidence: 0.9,
+  reason: "reason",
+  evidence: ["e"],
+  concerns: [],
+};
+
+const context: BuiltContext = {
+  systemPrompt: "sys",
+  userPrompt: "user",
+  contextDigest: "abc",
+  estimatedTokens: 500,
+};
+
+class FakeProvider implements IAiDecisionProvider {
+  public name: string;
+  public calls: number;
+  private behavior: "ok" | "always-fail" | "fail-once" | "auth" | "malformed";
+  private failureCount: number;
+  private modeledProviderName?: string;
+
+  constructor(name: string, behavior: "ok" | "always-fail" | "fail-once" | "auth" | "malformed" = "ok") {
+    this.name = name;
+    this.calls = 0;
+    this.behavior = behavior;
+    this.failureCount = 0;
+  }
+
+  public async decide(): Promise<AiDecisionResponse> {
+    this.calls++;
+    if (this.behavior === "always-fail") {
+      throw new Error(`${this.name} down`);
+    }
+    if (this.behavior === "auth") {
+      const e = new Error(`${this.name} invalid key`);
+      (e as { status?: number }).status = 401;
+      throw e;
+    }
+    if (this.behavior === "malformed") {
+      // Emit something that won't pass DecisionSchema.
+      return {
+        decision: { bogus: true } as unknown as Decision,
+        provider: this.name,
+        model: "m",
+      } as AiDecisionResponse;
+    }
+    if (this.behavior === "fail-once") {
+      this.failureCount++;
+      if (this.failureCount === 1) {
+        throw new Error("transient");
+      }
+    }
+    return {
+      decision: okDecision,
+      provider: this.name,
+      model: "m",
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      latencyMs: 1,
+    };
+  }
+}
+
+function entry(provider: FakeProvider): ProviderEntry {
+  return {
+    provider,
+    capabilities: standardCapabilities({ model: "m", timeoutMs: 1000, maxContextTokens: 32_768 }),
+    health: "HEALTHY",
+  };
+}
+
+async function expectFail(router: DefaultProviderRouter) {
+  await expect(router.decide(context)).rejects.toThrow();
+}
+
+describe("ProviderRouter failover matrix", () => {
+  it("primary success returns the decision with attempt attribution", async () => {
+    const primary = new FakeProvider("primary");
+    const router = new DefaultProviderRouter({ providers: [entry(primary)], maxRetries: 0 });
+    const res = await router.decide(context);
+    expect(res.provider).toBe("primary");
+    expect(primary.calls).toBe(1);
+    const detailed = await router.decideWithAttempts(context);
+    expect(detailed.attempts).toHaveLength(1);
+    expect(detailed.attempts[0]!.status).toBe("SUCCESS");
+    expect(detailed.attempts[0]!.totalTokens).toBe(15);
+  });
+
+  it("primary retryable failure -> fallback success", async () => {
+    const primary = new FakeProvider("primary", "always-fail");
+    const secondary = new FakeProvider("secondary");
+    const router = new DefaultProviderRouter({
+      providers: [entry(primary), entry(secondary)],
+      maxRetries: 0,
+    });
+    const res = await router.decide(context);
+    expect(res.provider).toBe("secondary");
+    expect(primary.calls).toBe(1);
+    const detailed = await router.decideWithAttempts(context);
+    expect(detailed.attempts).toHaveLength(2);
+    expect(detailed.attempts[0]!.status).toBe("FAILED");
+    expect(detailed.attempts[1]!.status).toBe("SUCCESS");
+  });
+
+  it("primary auth failure is NOT retried in place (no pointless retries)", async () => {
+    const primary = new FakeProvider("primary", "auth");
+    const router = new DefaultProviderRouter({ providers: [entry(primary)], maxRetries: 3 });
+    await expectFail(router);
+    expect(primary.calls).toBe(1); // auth is non-retryable: exactly one attempt
+  });
+
+  it("malformed primary output falls back safely", async () => {
+    const primary = new FakeProvider("primary", "malformed");
+    const secondary = new FakeProvider("secondary");
+    const router = new DefaultProviderRouter({
+      providers: [entry(primary), entry(secondary)],
+      maxRetries: 0,
+    });
+    const res = await router.decide(context);
+    expect(res.provider).toBe("secondary");
+    const detailed = await router.decideWithAttempts(context);
+    expect(detailed.attempts[0]!.failureClass).toBe("DECISION_OUTPUT_FAILURE");
+    expect(detailed.attempts[1]!.status).toBe("SUCCESS");
+  });
+
+  it("all providers fail -> rejects (REQUEST_HUMAN/retryable per outer policy)", async () => {
+    const primary = new FakeProvider("primary", "always-fail");
+    const secondary = new FakeProvider("secondary", "always-fail");
+    const router = new DefaultProviderRouter({
+      providers: [entry(primary), entry(secondary)],
+      maxRetries: 0,
+    });
+    await expectFail(router);
+  });
+
+  it("bounded MAX_AI_RETRIES amplifies retryable attempts exactly", async () => {
+    const primary = new FakeProvider("primary", "always-fail");
+    const router = new DefaultProviderRouter({ providers: [entry(primary)], maxRetries: 2 });
+    await expectFail(router);
+    // 1 + maxRetries(2) = 3 attempts, all retryable failures.
+    expect(primary.calls).toBe(3);
+  });
+
+  it("circuit OPEN skips the primary without calling it", async () => {
+    let clock = 0;
+    const primary = new FakeProvider("primary", "always-fail");
+    const secondary = new FakeProvider("secondary");
+    const breaker = new CircuitBreaker({ failureThreshold: 1, windowMs: 60_000, now: () => clock });
+    // Trip the primary's circuit directly (threshold 1).
+    breaker.onFailure();
+    expect(breaker.getState()).toBe("OPEN");
+
+    const router = new DefaultProviderRouter({
+      providers: [{ ...entry(primary), breaker }, entry(secondary)],
+      maxRetries: 0,
+    });
+    clock = 1000; // still in cooldown
+    const res = await router.decide(context);
+    expect(res.provider).toBe("secondary");
+    const callsBefore = primary.calls;
+    const detailed = await router.decideWithAttempts(context);
+    expect(primary.calls).toBe(callsBefore);
+    expect(detailed.attempts[0]!.status).toBe("SKIPPED_CIRCUIT");
+    expect(detailed.attempts[0]!.provider).toBe("primary");
+  });
+
+  it("HALF_OPEN probe is attempted after cooldown and re-opens on failure", async () => {
+    let clock = 0;
+    const primary = new FakeProvider("primary", "always-fail");
+    const secondary = new FakeProvider("secondary");
+    const breaker = new CircuitBreaker({
+      failureThreshold: 1,
+      windowMs: 60_000,
+      cooldownMs: 30_000,
+      now: () => clock,
+    });
+    breaker.onFailure();
+    expect(breaker.getState()).toBe("OPEN");
+
+    const router = new DefaultProviderRouter({
+      providers: [{ ...entry(primary), breaker }, entry(secondary)],
+      maxRetries: 0,
+    });
+    clock = 31_000; // cooldown elapsed -> HALF_OPEN probe will run primary again
+    const res = await router.decide(context);
+    // Primary still fails -> reopens and falls to secondary.
+    expect(res.provider).toBe("secondary");
+    expect(primary.calls).toBe(1); // probe attempted
+    expect(breaker.getState()).toBe("OPEN");
+  });
+
+  it("health snapshot reports circuit state without secrets", async () => {
+    let clock = 0;
+    const primary = new FakeProvider("primary", "always-fail");
+    const breaker = new CircuitBreaker({ failureThreshold: 1, windowMs: 60_000, now: () => clock });
+    breaker.onFailure();
+    const router = new DefaultProviderRouter({
+      providers: [{ ...entry(primary), breaker }],
+      maxRetries: 0,
+    });
+    const snap = router.healthSnapshot();
+    expect(snap[0]!.name).toBe("primary");
+    expect(snap[0]!.state).toBe("OPEN");
+  });
+});

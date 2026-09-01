@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getConfig } from "@jules/config";
 import { getDatabase, RepositoryKnowledgeRepository } from "@jules/db";
 import { normalizeRepositoryId } from "@jules/shared";
+import { logRouteError } from "../../route-logger";
 
 /**
  * P1: single knowledge entry operations (repository-scoped).
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
 
     return NextResponse.json({ entry });
   } catch (err: unknown) {
-    console.error("GET /api/knowledge/[id] failed", err);
+    logRouteError("GET /api/knowledge/[id]", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -85,7 +86,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
     await knowledgeRepo.delete(id);
     return NextResponse.json({ deleted: true, id });
   } catch (err: unknown) {
-    console.error("DELETE /api/knowledge/[id] failed", err);
+    logRouteError("DELETE /api/knowledge/[id]", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

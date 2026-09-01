@@ -5,3 +5,7 @@ export * from "./context-builder.js";
 export * from "./openai-provider.js";
 export * from "./mock-provider.js";
 export * from "./provider-factory.js";
+export * from "./provider-router.js";
+export * from "./provider-error.js";
+export * from "./provider-capabilities.js";
+export * from "./circuit-breaker.js";

@@ -32,6 +32,9 @@ export const EnvSchema = z.object({
   MAX_SESSION_CYCLES: z.coerce.number().min(1).max(50).default(5),
   MAX_AI_RETRIES: z.coerce.number().min(0).max(10).default(3),
   POLL_INTERVAL_MS: z.coerce.number().min(1000).max(300000).default(5000),
+  // Reconciliation page size: how many activities the poller fetches per page
+  // while catching up on every unseen activity (not just the latest).
+  RECONCILIATION_PAGE_SIZE: z.coerce.number().min(1).max(200).default(20),
   CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.85),
 
   // Autonomy Budget Engine (per Jules session, persisted in PostgreSQL)
@@ -79,6 +82,11 @@ export const EnvSchema = z.object({
       "postgresql://jules_user:jules_password@127.0.0.1:5439/jules_supervisor?sslmode=disable",
     ),
   DB_MAX_CONNECTIONS: z.coerce.number().min(1).max(100).default(10),
+
+  // Graceful shutdown deadline (ms). The worker drains in-flight work and
+  // closes all resources (DB pool, Redis, HTTP servers) within this bound
+  // before force-exiting, so a wedged resource can never hang shutdown.
+  GRACEFUL_SHUTDOWN_TIMEOUT_MS: z.coerce.number().min(1000).max(120000).default(15000),
 
   // Redis & Queueing
   REDIS_URL: z.string().default("redis://127.0.0.1:6389"),

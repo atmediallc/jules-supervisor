@@ -19,7 +19,21 @@ Create a dedicated folder for Jules Supervisor on your NAS storage volume:
 
 ## 3. Persistent Volumes Configuration
 
-Ensure storage permissions match container users (UID 1001 for web/worker, UID 999 for postgres):
+The bundled `docker-compose.yml` uses Docker named volumes (`postgres_data` and `redis_data`). Data is persisted under the Docker volume directory on the NAS storage pool — no manual directory setup is required.
+
+If you prefer explicit bind mounts (e.g., to back up a plain directory), override the volumes in your own compose override file:
+
+```yaml
+services:
+  postgres:
+    volumes:
+      - /volume1/docker/jules-supervisor/data/postgres:/var/lib/postgresql/data
+  redis:
+    volumes:
+      - /volume1/docker/jules-supervisor/data/redis:/data
+```
+
+When using bind mounts, match the container users (UID 999 for postgres):
 
 ```bash
 mkdir -p /volume1/docker/jules-supervisor/data/postgres

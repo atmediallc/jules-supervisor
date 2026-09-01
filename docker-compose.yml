@@ -32,6 +32,19 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: jules-supervisor-migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-jules_user}:${DB_PASSWORD:-jules_password}@postgres:5432/${DB_NAME:-jules_supervisor}?sslmode=disable
+    command: ["node", "packages/db/dist/migrate.js"]
+
   worker:
     build:
       context: .
@@ -43,6 +56,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "${WORKER_HEALTH_PORT:-8080}:8080"
     environment:
@@ -62,7 +77,11 @@ services:
       HEALTH_PORT: 8080
       READY_PORT: 8081
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8080/health', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})\""]
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "require(''http'').get(''http://localhost:8080/health'', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})"',
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -79,6 +98,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "3000:3000"
     environment:
@@ -97,7 +118,11 @@ services:
       AUTH_PASSWORD: ${AUTH_PASSWORD:?AUTH_PASSWORD is required}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})\""]
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "require(''http'').get(''http://localhost:3000/api/health'', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})"',
+        ]
       interval: 30s
       timeout: 10s
       retries: 3

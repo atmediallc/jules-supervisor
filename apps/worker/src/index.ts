@@ -5,10 +5,13 @@ import {
   ApprovalRepository,
   AuditRepository,
   BudgetRepository,
+  closeDatabase,
   DecisionRepository,
   getDatabase,
+  KillSwitch,
   RepositoryKnowledgeRepository,
   SessionRepository,
+  SyncCheckpointRepository,
   SystemSettingsRepository,
 } from "@jules/db";
 import { JulesApiClient, MockJulesClient } from "@jules/jules-client";
@@ -20,8 +23,8 @@ import { MemoryContextService } from "./memory-context.js";
 import { SupervisionPipeline } from "./pipeline.js";
 import { SessionWatcher } from "./poller.js";
 import { BullMqSupervisorQueue, DirectSupervisorQueue } from "./queue.js";
-import { startHealthServer } from "./health.js";
-import { startReadyServer } from "./ready.js";
+import { startHealthServer, stopHealthServer } from "./health.js";
+import { startReadyServer, stopReadyServer } from "./ready.js";
 
 async function main() {
   // 1. Initial config from env vars
@@ -73,13 +76,18 @@ async function main() {
   // Policy Engine
   const policyEngine = new PolicyEngine();
 
-  // Distributed Lock
-  let lock;
+  // P1: Runtime kill switch — authoritative, DB-backed safety gate.
+  const killSwitch = new KillSwitch(new SystemSettingsRepository(db));
+
+  // Distributed Lock (capture the underlying Redis client so shutdown can close it)
+  let lock: InMemoryDistributedLock | RedisDistributedLock;
+  let lockRedisClient: Redis | null = null;
   if (config.REDIS_ENABLED && !config.USE_IN_MEMORY_QUEUE_FALLBACK) {
     try {
       const redisClient = new Redis(config.REDIS_URL, { lazyConnect: true });
       await redisClient.connect();
       lock = new RedisDistributedLock(redisClient);
+      lockRedisClient = redisClient;
     } catch {
       logger.warn("Redis unavailable for lock, falling back to InMemoryDistributedLock");
       lock = new InMemoryDistributedLock();
@@ -110,22 +118,51 @@ async function main() {
     budgetRepo,
     lock,
     memoryService,
+    killSwitch,
+  });
+
+  // Log the initial runtime safety state so an operator immediately sees the
+  // effective interlock state at boot (fail-closed: read errors → SAFETY_LOCKED).
+  const bootSafety = await killSwitch.getState();
+  logger.info("Runtime kill switch state at boot", {
+    state: bootSafety.state,
+    changedAt: bootSafety.changedAt,
+    changedBy: bootSafety.changedBy,
+    reason: bootSafety.reason,
   });
 
   // Queue
+  //
+  // If we cannot run BullMQ (Redis unavailable or explicitly configured to use
+  // the in-memory queue), we degrade to the DirectSupervisorQueue and tell the
+  // pipeline to run in DEGRADED mode: mutation-capable decisions escalate to
+  // human review instead of auto-executing, so an unreliable worker never makes
+  // un-reviewed, hard-to-recover external mutations.
+  let usingDegradedQueue = false;
   const queue =
     config.REDIS_ENABLED && !config.USE_IN_MEMORY_QUEUE_FALLBACK
       ? new BullMqSupervisorQueue(config, pipeline)
-      : new DirectSupervisorQueue(pipeline);
+      : (() => {
+          usingDegradedQueue = true;
+          return new DirectSupervisorQueue(pipeline);
+        })();
 
   await queue.start().catch((err) => {
+    usingDegradedQueue = true;
     logger.warn("Could not start BullMQ, using DirectSupervisorQueue fallback", {
       error: (err as Error).message,
     });
   });
 
-  // Session Watcher / Poller
-  const watcher = new SessionWatcher(config, julesClient, pipeline);
+  if (usingDegradedQueue) {
+    pipeline.setDegradedMode(true);
+  }
+
+  // Session Watcher / Poller — reconciles every unseen activity per session
+  // via a persisted sync_checkpoints cursor, catching up on all missed work
+  // (not just the most recent activity) after downtime.
+  const checkpointRepo = new SyncCheckpointRepository(db);
+  const watcher = new SessionWatcher(config, julesClient, pipeline, checkpointRepo);
   await watcher.start();
 
   // Start health and ready servers
@@ -133,15 +170,63 @@ async function main() {
   startReadyServer();
 
   // Graceful Shutdown
+  //
+  // Order is important for production correctness:
+  //   1. Stop the poller so no NEW sessions are picked up.
+  //   2. Stop the queue (drains in-flight BullMQ jobs; worker.close() waits
+  //      for running jobs to complete before returning).
+  //   3. Close the DB pool (closeDatabase) so no connections are leaked.
+  //   4. Close the Redis lock client.
+  //   5. Stop the health/ready HTTP servers.
+  //
+  // A bounded deadline guarantees the process never hangs on shutdown: if the
+  // graceful steps exceed GRACEFUL_SHUTDOWN_TIMEOUT_MS, we force-exit.
   const shutdown = async (signal: string) => {
-    logger.info(`Received ${signal}, shutting down gracefully...`);
-    await watcher.stop();
-    await queue.stop();
-    process.exit(0);
+    logger.info(`Received ${signal}, shutting down gracefully...`, {
+      timeoutMs: config.GRACEFUL_SHUTDOWN_TIMEOUT_MS,
+    });
+
+    // Arm a force-exit fallback so a wedged resource cannot hang the process.
+    const forceTimer = setTimeout(() => {
+      logger.error("Graceful shutdown exceeded deadline — forcing exit");
+      process.exit(1);
+    }, config.GRACEFUL_SHUTDOWN_TIMEOUT_MS);
+    forceTimer.unref();
+
+    try {
+      // 1. Do not pick up new work.
+      await watcher.stop();
+
+      // 2. Drain the queue (waits for in-flight jobs to finish).
+      await queue.stop();
+
+      // 3. Close DB pool.
+      await closeDatabase();
+      logger.info("Database pool closed");
+
+      // 4. Close the Redis lock client (if a Redis lock was in use).
+      if (lockRedisClient) {
+        await lockRedisClient.quit().catch(() => {
+          lockRedisClient?.disconnect();
+        });
+        logger.info("Redis lock client closed");
+      }
+
+      // 5. Stop HTTP servers.
+      stopHealthServer();
+      stopReadyServer();
+
+      logger.info("Graceful shutdown complete");
+    } catch (err: unknown) {
+      logger.error("Error during graceful shutdown", err);
+    } finally {
+      clearTimeout(forceTimer);
+      process.exit(0);
+    }
   };
 
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
 main().catch((err) => {

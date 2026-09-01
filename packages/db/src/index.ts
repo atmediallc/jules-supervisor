@@ -9,4 +9,6 @@ export * from "./repositories/audit.repository.js";
 export * from "./repositories/budget.repository.js";
 export * from "./repositories/repository-knowledge.repository.js";
 export * from "./repositories/system-settings.repository.js";
+export * from "./repositories/sync-checkpoint.repository.js";
+export * from "./kill-switch.js";
 export { sql, eq, desc } from "drizzle-orm";

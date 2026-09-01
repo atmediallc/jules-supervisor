@@ -8,6 +8,7 @@ import {
   TRUST_LEVELS,
 } from "@jules/db";
 import { normalizeRepositoryId } from "@jules/shared";
+import { logRouteError } from "../route-logger";
 
 /**
  * P1: Repository knowledge CRUD (human-maintained, repository-scoped).
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
     });
     return NextResponse.json({ entries });
   } catch (err: unknown) {
-    console.error("GET /api/knowledge failed", err);
+    logRouteError("GET /api/knowledge", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ entry }, { status: 201 });
   } catch (err: unknown) {
-    console.error("POST /api/knowledge failed", err);
+    logRouteError("POST /api/knowledge", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

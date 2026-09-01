@@ -9,7 +9,7 @@ cd Jules-Supervisor
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env with your Google Jules API key and AI Provider endpoint / OmniRoute key
+# Edit .env with your Google Jules API key and AI provider settings (AI_API_KEY / AI_BASE_URL / AI_PROVIDER_TYPE)
 
 # 3. Start full stack (PostgreSQL, Redis, Web Control Plane, Worker Daemon)
 docker compose up -d

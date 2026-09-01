@@ -159,6 +159,59 @@ describe("SupervisionPipeline", () => {
     expect(decisions[0]!.executionState).toBe("EXECUTED");
   });
 
+  it("DEGRADED_MODE: mutation-capable FULL_AUTO decision escalates to human review instead of auto-executing", async () => {
+    const { pipeline, store, julesClient } = setupTestPipeline("FULL_AUTO");
+    pipeline.setDegradedMode(true);
+
+    const session = createMockSession({ id: "ses_degraded_001", state: "AWAITING_USER_INPUT" });
+    const activity = createMockActivity({ id: "act_degraded_001", sessionId: "ses_degraded_001" });
+    julesClient.sessions.set(session.id, session);
+
+    const result = await pipeline.processActivity({ session, activity });
+
+    // A degraded worker must NOT make an unreviewed external mutation.
+    expect(julesClient.sentMessages).toHaveLength(0);
+    expect(julesClient.approvedPlans).toHaveLength(0);
+    // The mutation-capable action escalates to human review instead.
+    expect(result?.executed).toBe(false);
+    expect(result?.requiresHumanReview).toBe(true);
+
+    const decisions = await store.listDecisions();
+    expect(decisions[0]!.executionState).toBe("AWAITING_APPROVAL");
+  });
+
+  it("DEGRADED_MODE: AUTO_RESPOND mutation also escalates to human review", async () => {
+    const { pipeline, julesClient } = setupTestPipeline("AUTO_RESPOND");
+    pipeline.setDegradedMode(true);
+
+    const session = createMockSession({ id: "ses_degraded_ar", state: "AWAITING_USER_INPUT" });
+    const activity = createMockActivity({ id: "act_degraded_ar", sessionId: "ses_degraded_ar" });
+    julesClient.sessions.set(session.id, session);
+
+    const result = await pipeline.processActivity({ session, activity });
+
+    expect(result?.executed).toBe(false);
+    expect(result?.requiresHumanReview).toBe(true);
+    expect(julesClient.sentMessages).toHaveLength(0);
+  });
+
+  it("setDegradedMode(false) restores auto-execution after leaving degraded mode", async () => {
+    const { pipeline, store, julesClient } = setupTestPipeline("FULL_AUTO");
+    pipeline.setDegradedMode(true);
+    pipeline.setDegradedMode(false);
+
+    const session = createMockSession({ id: "ses_recovered_001", state: "AWAITING_USER_INPUT" });
+    const activity = createMockActivity({ id: "act_recovered_001", sessionId: "ses_recovered_001" });
+    julesClient.sessions.set(session.id, session);
+
+    const result = await pipeline.processActivity({ session, activity });
+
+    expect(result?.executed).toBe(true);
+    expect(julesClient.sentMessages).toHaveLength(1);
+    const decisions = await store.listDecisions();
+    expect(decisions[0]!.executionState).toBe("EXECUTED");
+  });
+
   it("proves DRY_RUN mode enforces ZERO mutations even if both automation flags are explicitly true", async () => {
     const config = EnvSchema.parse({
       SUPERVISOR_MODE: "DRY_RUN",

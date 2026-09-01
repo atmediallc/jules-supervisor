@@ -2,7 +2,7 @@
 
 ## 1. Engine Architecture
 
-The AI Decision Engine provides a provider-agnostic, structured interface for evaluating Google Jules sessions.
+The AI Decision Engine provides a structured, schema-enforced interface for evaluating Google Jules sessions. It currently ships a single active provider — the OpenAI-compatible adapter (default when `AI_PROVIDER_TYPE=openai`) and a `mock` provider for local DRY_RUN/testing. It is **not** a multi-provider router today; provider failover is a documented roadmap item, not an implemented capability.
 
 ```
 +-------------------------------------------------------------+
@@ -16,10 +16,11 @@ The AI Decision Engine provides a provider-agnostic, structured interface for ev
                               v
 +-------------------------------------------------------------+
 |                   AI Provider Subsystem                     |
-|  - OpenAI-compatible transport                              |
-|  - OmniRoute routing integration                            |
+|  - OpenAI-compatible transport (primary)                    |
+|  - Mock provider for DRY_RUN / local testing                |
 |  - Configurable timeouts & abort signal support             |
 |  - Latency & token usage telemetry                          |
+|  - Note: no multi-provider router today (roadmap item)      |
 +-------------------------------------------------------------+
                               |
                               v
@@ -64,9 +65,11 @@ export type DecisionResult = z.infer<typeof DecisionSchema>;
 
 ---
 
-## 3. Consensus Engine (Optional Multi-Model Verification)
+## 3. Consensus Engine (Optional Multi-Model Verification) — Roadmap
 
-For high-risk decisions or when configured:
+> **Status: NOT IMPLEMENTED.** This section is a specification for a future capability. The current engine runs a single provider; there is no primary/reviewer/reconciler flow.
+
+For high-risk decisions or when configured (future):
 
 1. **Primary Model**: Generates initial decision.
 2. **Reviewer Model**: Independently analyzes context and primary decision.

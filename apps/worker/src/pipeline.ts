@@ -17,12 +17,15 @@ import {
   AuditRepository,
   BudgetRepository,
   DecisionRepository,
+  KillSwitch,
+  safetyActionForState,
   SessionRepository,
 } from "@jules/db";
 import { IJulesClient, JulesActivity, JulesSession } from "@jules/jules-client";
 import { logger, metrics } from "@jules/observability";
 import { PolicyEngine } from "@jules/policy";
 import { generateId, sha256 } from "@jules/shared";
+import { safetyInterlockError } from "./errors.js";
 import { IDistributedLock } from "./lock.js";
 import type { MemoryContext, MemoryContextService } from "./memory-context.js";
 
@@ -40,6 +43,11 @@ export interface PipelineDependencies {
   lock: IDistributedLock;
   /** P1: advisory memory retrieval (optional for backward compatibility). */
   memoryService?: MemoryContextService;
+  /** P1: runtime kill switch — authoritative, DB-backed, checked pre-AI and pre-mutation. */
+  killSwitch?: KillSwitch;
+  /** Worker is DEGRADED (e.g. queue infra unavailable): mutation-capable
+   * decisions escalate to human review instead of auto-executing. */
+  degradedMode?: boolean;
 }
 
 export interface ProcessActivityInput {
@@ -70,6 +78,10 @@ export class SupervisionPipeline {
   private readonly contextBuilder: ContextBuilder;
   private readonly loopDetector: LoopDetector;
   private readonly memoryService: MemoryContextService | null;
+  private readonly killSwitch: KillSwitch | null;
+  /** True when the worker is running DEGRADED (infra unavailable). In this
+   * state mutation-capable decisions escalate to human review. */
+  private degradedMode = false;
 
   constructor(deps: PipelineDependencies) {
     this.config = deps.config;
@@ -90,6 +102,16 @@ export class SupervisionPipeline {
     });
     this.loopDetector = new LoopDetector({ maxTotalSessionCycles: deps.config.MAX_SESSION_CYCLES });
     this.memoryService = deps.memoryService ?? null;
+    this.killSwitch = deps.killSwitch ?? null;
+    this.degradedMode = deps.degradedMode ?? false;
+  }
+
+  /** Flip degraded mode at runtime (e.g. after a queue-infra fallback). */
+  public setDegradedMode(enabled: boolean): void {
+    this.degradedMode = enabled;
+    if (enabled) {
+      logger.warn("Worker entering DEGRADED mode — mutations will escalate to human review");
+    }
   }
 
   public async processActivity(
@@ -220,8 +242,48 @@ export class SupervisionPipeline {
       });
       const budgetExceeded = budgetCheck.exceeded;
 
+      // 5a. Runtime kill switch gate — checked BEFORE any AI call and again
+      // immediately before any external mutation (see step 11). In PAUSED /
+      // SAFETY_LOCKED the AI is not invoked and decisions escalate to a human.
+      let safetyBlocked = false;
+      let safetyState: { state: string; reason: string | null } | null = null;
+      if (this.killSwitch) {
+        const rec = await this.killSwitch.getState();
+        safetyState = { state: rec.state, reason: rec.reason };
+        safetyBlocked = !this.killSwitch.isRunning(rec);
+        if (safetyBlocked) {
+          log.warn("Kill switch blocked AI invocation (pre-AI gate)", {
+            safetyState: rec.state,
+            reason: rec.reason,
+          });
+          metrics.incrementSafetyInterlock();
+        }
+      }
+
       let aiResponse: AiDecisionResponse;
-      if (budgetExceeded) {
+      if (safetyBlocked) {
+        // Kill switch not RUNNING: do NOT call the AI at all.
+        const guard = safetyActionForState(
+          safetyState
+            ? { state: safetyState.state as never, changedAt: null, changedBy: null, reason: safetyState.reason }
+            : { state: "SAFETY_LOCKED" as never, changedAt: null, changedBy: null, reason: null },
+        );
+        aiResponse = {
+          provider: "safety-interlock",
+          model: "none",
+          decision: {
+            action: guard.action as DecisionAction,
+            response: null,
+            risk: "high",
+            confidence: 1.0,
+            reason: guard.reason,
+            evidence: [],
+            concerns: ["safety-interlock"],
+          } as Decision,
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          latencyMs: 0,
+        };
+      } else if (budgetExceeded) {
         // Budget exhausted: skip the AI call entirely and escalate to a human.
         log.warn("Autonomy budget exhausted. Escalating to human review.", {
           reasons: budgetCheck.reasons,
@@ -298,7 +360,7 @@ export class SupervisionPipeline {
       metrics.incrementRisk(effectiveRisk);
 
       // 7. Execution Gate
-      const gate = evaluateExecutionGate(
+      let gate = evaluateExecutionGate(
         proposedDecision.action,
         effectiveRisk,
         proposedDecision.confidence,
@@ -309,6 +371,27 @@ export class SupervisionPipeline {
           confidenceThreshold: this.config.CONFIDENCE_THRESHOLD,
         },
       );
+
+      // 7a. Degraded-mode safety override (REQUIRED): when the worker is
+      // running degraded (e.g. Redis/queue infra unavailable → in-memory
+      // fallback), do NOT auto-execute irreversible external mutations.
+      // Escalate mutation-capable actions to human review instead. This keeps
+      // a degraded worker from making unreviewed changes it cannot reliably
+      // track or recover.
+      if (this.degradedMode && gate.autoExecuted) {
+        log.warn("Degraded mode: escalating mutation-capable action to human review", {
+          action: proposedDecision.action,
+          mode: this.config.SUPERVISOR_MODE,
+        });
+        metrics.incrementDegradedEscalation();
+        gate = {
+          ...gate,
+          autoExecuted: false,
+          requiresHumanReview: true,
+          blocked: false,
+          reason: `DEGRADED_MODE: ${gate.reason}`,
+        };
+      }
 
       const decisionId = generateId("dec");
       const executionState = gate.autoExecuted
@@ -396,6 +479,24 @@ export class SupervisionPipeline {
             decisionId,
             action: proposedDecision.action,
           });
+
+          // 11a. **Pre-mutation kill switch gate (REQUIRED)**: re-check the
+          // safety state immediately before ANY external mutation. This closes
+          // the window where a PAUSE/SAFETY_LOCK lands after the AI call but
+          // before approvePlan/sendMessage. Refusing means no external effect.
+          if (this.killSwitch) {
+            const rec = await this.killSwitch.getState();
+            if (!this.killSwitch.isRunning(rec)) {
+              const guard = safetyActionForState(rec);
+              log.warn("Kill switch refused pre-mutation execution", {
+                safetyState: rec.state,
+                reason: rec.reason,
+                decisionId,
+              });
+              metrics.incrementSafetyInterlock();
+              throw safetyInterlockError(rec.state, guard.reason);
+            }
+          }
 
           // Pre-execution verification: ensure session state has not changed
           const freshSession = await this.julesClient.getSession(session.id);

@@ -56,9 +56,9 @@ flowchart TD
                                           v
 +-----------------------------------------------------------------------------------+
 |                        AI Decision Engine (packages/ai)                           |
-|  - Provider-agnostic abstraction (OmniRoute / OpenAI / Gemini / Claude)           |
+|  - OpenAI-compatible adapter (primary) + mock provider                            |
 |  - Strict Zod Schema validation (no arbitrary markdown/prose execution)           |
-|  - Multi-model consensus support for high-risk domains                            |
+|  - Note: single-provider today; failover/router is a roadmap item                 |
 +-----------------------------------------------------------------------------------+
                                           |
                                           v
@@ -86,8 +86,10 @@ flowchart TD
 |            apps/web                |          |        Jules API Mutation         |
 |  - Next.js Control Plane           |          |  - Re-verify session state first  |
 |  - Human Review & Approval Queue   |          |  - Send response / Approve plan   |
-|  - Real-time SSE Live Dashboard    |          |  - Reconcile ambiguous network    |
-|  - Audit Log & Policy Manager      |          +-----------------------------------+
+|  - SSE heartbeat endpoint; live    |          |  - Retry on transient failure     |
+|    event feed & dashboard data are |          +-----------------------------------+
+|    roadmap items (pages render     |                            |
+|    mock data today except settings)|                            |
 +------------------------------------+                            |
                                                                   v
                                                 +-----------------------------------+
@@ -101,7 +103,8 @@ flowchart TD
 ## 2. Core Modules & Boundaries
 
 1. **`apps/web`**: Next.js 15 (App Router) + React 19 + Tailwind CSS + Lucide Icons.
-   - Operations dashboard, real-time session monitoring via SSE.
+   - Operations dashboard (sessions/approvals/decisions/audit/policies pages currently render mock data; only Settings is wired to live APIs).
+   - SSE endpoint exists but emits CONNECTED/HEARTBEAT only — a live event feed is a roadmap item.
    - Human approval interface with double-submit protection and stale-state verification.
    - Policy configuration, provider management, health metrics, and audit log.
 
@@ -126,7 +129,8 @@ flowchart TD
    - Complete fixture set and mock adapter for local testing and contract verification.
 
 6. **`packages/ai`**: AI decision subsystem.
-   - OpenAI-compatible and OmniRoute provider adapters.
+   - OpenAI-compatible provider adapter (primary) and a mock provider for tests/DRY_RUN.
+   - Single-provider today — no router, failover, or multi-model consensus is implemented (roadmap items).
    - Structured output enforcement using Zod schemas (`DecisionResult`).
    - Deterministic context builder with sensitive secret redaction and token budgets.
    - Prompt injection defense boundary.

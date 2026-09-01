@@ -1,7 +1,7 @@
 import { DecisionSchema } from "@jules/core";
 import { logger, metrics } from "@jules/observability";
 import OpenAI from "openai";
-import { validateProviderUrl } from "./ssrf-guard.js";
+import { validateProviderUrl, validateProviderUrlWithDns } from "./ssrf-guard.js";
 import { AiDecisionResponse, BuiltContext, IAiDecisionProvider } from "./types.js";
 
 export interface OpenAiProviderConfig {
@@ -20,14 +20,22 @@ export class OpenAiDecisionProvider implements IAiDecisionProvider {
   private readonly model: string;
   private readonly timeoutMs: number;
   private readonly maxTokens: number;
+  private readonly baseUrl: string;
+  private readonly allowInsecureLocal: boolean;
+  private readonly trustedInternalHosts: string[] | undefined;
+  private dnsValidated = false;
+  private dnsValidationPromise: Promise<void> | null = null;
 
   constructor(config: OpenAiProviderConfig, name = "openai") {
     this.name = name;
     this.model = config.model;
     this.timeoutMs = config.timeoutMs ?? 30000;
     this.maxTokens = config.maxTokens ?? 2048;
+    this.allowInsecureLocal = config.allowInsecureLocal ?? false;
+    this.trustedInternalHosts = config.trustedInternalHosts;
 
     const baseUrl = config.baseUrl || "https://api.openai.com/v1";
+    this.baseUrl = baseUrl;
     const ssrfCheck = validateProviderUrl(baseUrl, {
       allowInsecureLocal: config.allowInsecureLocal,
       trustedInternalHosts: config.trustedInternalHosts,
@@ -44,7 +52,34 @@ export class OpenAiDecisionProvider implements IAiDecisionProvider {
     });
   }
 
+  /**
+   * Resolve the configured provider host once and confirm it does not point at
+   * a private/reserved IP (DNS-rebinding protection). Fail-closed: if
+   * resolution fails or the domain is ambiguous, we refuse to connect rather
+   * than risk SSRF to internal services. The result is cached after the first
+   * successful validation (DNS changes mid-run are out of scope for a static
+   * operator-configured endpoint).
+   */
+  public async validateSsrSafe(signal?: AbortSignal): Promise<void> {
+    if (this.dnsValidated) return;
+    if (!this.dnsValidationPromise) {
+      this.dnsValidationPromise = (async () => {
+        const result = await validateProviderUrlWithDns(this.baseUrl, {
+          allowInsecureLocal: this.allowInsecureLocal,
+          trustedInternalHosts: this.trustedInternalHosts,
+        });
+        if (!result.isValid) {
+          throw new Error(`AI Provider DNS/SSRF validation failed: ${result.reason}`);
+        }
+        this.dnsValidated = true;
+      })();
+    }
+    await this.dnsValidationPromise;
+  }
+
   public async decide(context: BuiltContext, signal?: AbortSignal): Promise<AiDecisionResponse> {
+    // SSRF DNS guard runs before the first connection attempt (fail-closed).
+    await this.validateSsrSafe(signal);
     const startTime = Date.now();
 
     try {

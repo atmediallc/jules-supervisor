@@ -2,7 +2,7 @@
 
 > **Autonomous, Policy-Controlled AI Orchestration & Supervision Platform for Google Jules**
 
-Jules Supervisor is an enterprise-grade control plane that continuously observes, analyzes, governs, and responds to Google Jules coding sessions through official Google Jules APIs and OpenAI-compatible AI providers (such as OmniRoute, GPT-4o, Claude, or Gemini).
+Jules Supervisor is an enterprise-grade control plane that continuously observes, analyzes, governs, and responds to Google Jules coding sessions through official Google Jules APIs and an OpenAI-compatible AI provider (any compatible endpoint, e.g. OpenAI or a self-hosted gateway; single provider, no router/failover yet).
 
 ---
 
@@ -13,7 +13,7 @@ Jules Supervisor is an enterprise-grade control plane that continuously observes
 - **Deterministic Policy & Risk Engine**: Hard safety veto rules that unconditionally override AI model output for destructive SQL, sensitive file paths, credential tampering, and recursion loops.
 - **Prompt Injection Defense**: Repository and agent inputs are tagged as untrusted data (`<untrusted_context>`), isolated from system directives, and audited.
 - **Idempotency & Concurrency Gate**: Deterministic SHA-256 idempotency keys and distributed locking prevent duplicate API actions or race conditions across multiple workers.
-- **Modern Next.js Control Plane Dashboard**: Real-time KPI metrics, interactive Human Approval Queue with double-submission protection, session explorer, decision auditing, and Server-Sent Events (SSE).
+- **Modern Next.js Control Plane Dashboard**: KPI metrics, interactive Human Approval Queue with double-submission protection, session explorer, and decision auditing. Note: sessions/approvals/decisions/audit/policies pages render mock data today; only Settings is live. SSE endpoint emits heartbeats only (live event feed is a roadmap item).
 - **Production-Ready Persistence & Queues**: PostgreSQL (Drizzle ORM), BullMQ worker queue with Redis coordination, and standalone in-memory fallbacks for offline testing.
 - **Docker & NAS Ready**: Multi-stage lightweight Dockerfiles, Docker Compose stack, and dedicated Synology/TrueNAS runbooks.
 
@@ -78,7 +78,7 @@ Event Normalization (packages/core)
     ↓
 Context Builder with Redaction & Token Budget (packages/ai)
     ↓
-AI Decision Engine (OpenAI / OmniRoute)
+AI Decision Engine (OpenAI-compatible / Mock)
     ↓
 Decision Validation (Zod Schema)
     ↓
@@ -104,7 +104,7 @@ jules-supervisor/
 │   ├── core/                    # Canonical events, domain types, execution modes, risk
 │   ├── db/                      # PostgreSQL client, Drizzle schemas & repositories
 │   ├── jules-client/            # Typed Google Jules API client with Zod schemas & mock
-│   ├── ai/                      # OpenAI/OmniRoute provider, SSRF guard, context builder
+│   ├── ai/                      # OpenAI-compatible provider, SSRF guard, context builder
 │   ├── policy/                  # Deterministic Policy Engine & Hard Veto rules
 │   ├── observability/           # Structured Pino logger with redaction & metric counters
 │   ├── config/                  # Strict Zod environment validation
@@ -138,12 +138,14 @@ jules-supervisor/
 ## CI/CD & Health Checks
 
 This project includes a GitHub Actions CI pipeline that runs on every push to `main` and `develop`, and on pull requests. The pipeline:
+
 - Installs dependencies with pnpm
 - Runs linting and type checking
 - Executes the full test suite (`pnpm run test:ci`)
 - Scans for security vulnerabilities with Trivy
 
 Both the web dashboard and the worker expose health check endpoints:
+
 - Web: `GET /api/health` (port 3000)
 - Worker: `GET /health` (port 8080)
 

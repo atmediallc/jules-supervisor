@@ -10,6 +10,7 @@ import {
   getDatabase,
 } from "@jules/db";
 import { sanitizeForLogs } from "@jules/shared";
+import { logRouteError } from "../../route-logger";
 
 const ApprovalActionBodySchema = z.object({
   status: z.enum(["APPROVED", "REJECTED", "EDITED", "CANCELLED"]),
@@ -140,7 +141,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
             });
           } catch (feedbackErr) {
             // Auditable failure: log + audit event; never silently swallowed.
-            console.error("[approvals] human feedback persistence failed", feedbackErr);
+            logRouteError("approvals/[id]", feedbackErr);
             try {
               await auditRepo.record({
                 id: `aud_fberr_${randomUUID()}`,

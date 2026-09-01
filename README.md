@@ -135,6 +135,36 @@ jules-supervisor/
 
 ---
 
+## CI/CD & Health Checks
+
+This project includes a GitHub Actions CI pipeline that runs on every push to `main` and `develop`, and on pull requests. The pipeline:
+- Installs dependencies with pnpm
+- Runs linting and type checking
+- Executes the full test suite (`pnpm run test:ci`)
+- Scans for security vulnerabilities with Trivy
+
+Both the web dashboard and the worker expose health check endpoints:
+- Web: `GET /api/health` (port 3000)
+- Worker: `GET /health` (port 8080)
+
+These endpoints are used by Docker Compose health checks to monitor container liveness.
+
+## Load Testing
+
+We use [k6](https://k6.io/) for load testing. To run the load test:
+
+1. Install k6: https://k6.io/docs/get-started/installation/
+2. Start the application (e.g., with `docker compose up -d`).
+3. Run `pnpm run test:load` (or `k6 run tests/load/load-test.js`).
+
+The load test simulates a moderate number of concurrent users and checks that the health endpoint responds quickly.
+
+## Contributing
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+
+---
+
 ## License
 
 MIT License. Copyright (c) 2026 Angelo Tejada.

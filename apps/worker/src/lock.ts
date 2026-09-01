@@ -33,14 +33,52 @@ export class RedisDistributedLock implements IDistributedLock {
     return result === 1;
   }
 
+  /**
+   * Atomically refresh the lock TTL, but only if the key still holds our token.
+   * This lets a long-running critical section (e.g. an AI call + persistence)
+   * keep ownership past the original TTL without ever extending a lock it no
+   * longer owns (guards against the stale-owner-expiry race).
+   */
+  private async renew(resource: string, token: string, ttlMs: number): Promise<boolean> {
+    const key = `lock:${resource}`;
+    const script = `
+      if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("pexpire", KEYS[1], ARGV[2])
+      else
+        return 0
+      end
+    `;
+    const result = await this.redis.eval(script, 1, key, token, ttlMs);
+    return result === 1;
+  }
+
   public async withLock<T>(resource: string, fn: () => Promise<T>, ttlMs = 15000): Promise<T> {
     const token = await this.acquire(resource, ttlMs);
     if (!token) {
       throw new Error(`Failed to acquire lock for resource: ${resource}`);
     }
+
+    // Renew the lock while the critical section runs so operations that outlive
+    // the base TTL (e.g. AI latency up to AI_TIMEOUT_MS, defaults > lock TTL)
+    // don't lose ownership to a concurrent worker mid-flight.
+    const renewIntervalMs = Math.max(Math.floor(ttlMs / 3), 100);
+    let renewTimer: NodeJS.Timeout | null = null;
+    if (ttlMs > 0) {
+      renewTimer = setInterval(() => {
+        void this.renew(resource, token, ttlMs).catch(() => {
+          // Renewal is best-effort: if it transiently fails, the lock still has
+          // its remaining TTL and the next tick will retry.
+        });
+      }, renewIntervalMs);
+    }
+
     try {
       return await fn();
     } finally {
+      if (renewTimer) {
+        clearInterval(renewTimer);
+        renewTimer = null;
+      }
       await this.release(resource, token);
     }
   }

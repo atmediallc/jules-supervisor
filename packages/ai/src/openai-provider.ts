@@ -95,9 +95,51 @@ export class OpenAiDecisionProvider implements IAiDecisionProvider {
         latencyMs,
       };
     } catch (err: unknown) {
-      metrics.incrementAiError((err as Error).name || "AI_ERROR");
+      metrics.incrementAiError(classifyAiError(err));
       logger.error("AI Decision Provider failed", err);
       throw err;
     }
   }
+}
+
+/**
+ * Map an arbitrary AI provider error to one of a small, fixed set of metric
+ * buckets so the `ai_errors` counter keeps bounded cardinality over long,
+ * unattended runs (arbitrary `err.name` values would otherwise grow without
+ * bound and inflate the Prometheus label space).
+ */
+interface AiErrorShape {
+  name?: string;
+  status?: number;
+}
+
+type ErrorRule = {
+  bucket: string;
+  match: (e: AiErrorShape) => boolean;
+};
+
+const AI_ERROR_RULES: ErrorRule[] = [
+  {
+    bucket: "timeout",
+    match: (e) => includes(e.name, "Timeout") || includes(e.name, "AbortError"),
+  },
+  { bucket: "rate_limit", match: (e) => e.status === 429 || includes(e.name, "RateLimit") },
+  { bucket: "server_error", match: (e) => e.status !== undefined && e.status >= 500 },
+  { bucket: "parse", match: (e) => e.name === "SyntaxError" || includes(e.name, "JSON") },
+  { bucket: "validation", match: (e) => e.name === "ZodError" || includes(e.name, "Validation") },
+  { bucket: "network", match: (e) => includes(e.name, "Connection") },
+];
+
+function includes(haystack: string | undefined, needle: string): boolean {
+  return haystack !== undefined && haystack.includes(needle);
+}
+
+export function classifyAiError(err: unknown): string {
+  const e = err as AiErrorShape;
+  for (const rule of AI_ERROR_RULES) {
+    if (rule.match(e)) {
+      return rule.bucket;
+    }
+  }
+  return "unknown";
 }

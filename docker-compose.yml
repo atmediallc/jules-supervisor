@@ -43,6 +43,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    ports:
+      - "${WORKER_HEALTH_PORT:-8080}:8080"
     environment:
       NODE_ENV: production
       SUPERVISOR_MODE: ${SUPERVISOR_MODE:-DRY_RUN}
@@ -57,6 +59,14 @@ services:
       AI_API_KEY: ${AI_API_KEY:-mock-ai-key-placeholder}
       AI_MODEL: ${AI_MODEL:-gpt-4o}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      HEALTH_PORT: 8080
+      READY_PORT: 8081
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8080/health', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   web:
     build:
@@ -72,6 +82,7 @@ services:
     ports:
       - "3000:3000"
     environment:
+      READY_PORT: 8081
       NODE_ENV: production
       PORT: 3000
       SUPERVISOR_MODE: ${SUPERVISOR_MODE:-DRY_RUN}
@@ -81,6 +92,16 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
       AI_MODEL: ${AI_MODEL:-gpt-4o}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
+      AUTH_USERNAME: ${AUTH_USERNAME:?AUTH_USERNAME is required}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:?AUTH_PASSWORD is required}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   postgres_data:

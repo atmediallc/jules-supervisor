@@ -24,5 +24,24 @@ export default defineConfig({
     environment: "node",
     include: ["**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**", "**/.next/**", "**/*.spec.ts"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html", "lcov"],
+      thresholds: {
+        lines: 80,
+        branches: 80,
+        functions: 80,
+        statements: 80,
+      },
+      exclude: [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/build/**",
+        "**/*.d.ts",
+        "**/migrations/**",
+        "**/test-utils/**",
+        "**/vitest.config.ts",
+      ],
+    },
   },
 });

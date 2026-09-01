@@ -14,12 +14,15 @@
     "test:unit": "vitest run --exclude 'tests/integration/**'",
     "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test",
+    "test:ci": "vitest run --coverage",
+    "test:load": "k6 run tests/load/load-test.js",
     "db:migrate": "tsx packages/db/src/migrate.ts",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/node": "^22.13.9",
+    "@vitest/coverage-v8": "^3.0.7",
     "@types/pg": "^8.23.1",
     "bullmq": "^5.81.3",
     "eslint": "^10.9.1",

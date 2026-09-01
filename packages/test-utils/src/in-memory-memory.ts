@@ -5,7 +5,6 @@ import {
   KnowledgeType,
   RepositoryKnowledgeInsert,
   RepositoryKnowledgeSelect,
-  RepositoryKnowledgeRepository,
   TRUST_LEVEL_RANK,
   TrustLevel,
   TRUST_LEVELS,

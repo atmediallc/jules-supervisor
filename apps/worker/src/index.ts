@@ -20,6 +20,8 @@ import { MemoryContextService } from "./memory-context.js";
 import { SupervisionPipeline } from "./pipeline.js";
 import { SessionWatcher } from "./poller.js";
 import { BullMqSupervisorQueue, DirectSupervisorQueue } from "./queue.js";
+import { startHealthServer } from "./health.js";
+import { startReadyServer } from "./ready.js";
 
 async function main() {
   // 1. Initial config from env vars
@@ -125,6 +127,10 @@ async function main() {
   // Session Watcher / Poller
   const watcher = new SessionWatcher(config, julesClient, pipeline);
   await watcher.start();
+
+  // Start health and ready servers
+  startHealthServer();
+  startReadyServer();
 
   // Graceful Shutdown
   const shutdown = async (signal: string) => {

@@ -2,6 +2,26 @@
 
 ## 1. System Overview
 
+```mermaid
+flowchart TD
+    A[Google Jules] -->|Official Jules API| B[Jules API Client]
+    B --> C[Worker: Session Watcher / Poller]
+    C --> D[Event Normalization]
+    D --> E[Context Builder]
+    E --> F[AI Decision Engine]
+    F --> G[Policy & Risk Engine]
+    G --> H[Execution Gate]
+    H -->|Auto-Approved| I[Jules API Action]
+    H -->|Human Review| J[Web Dashboard]
+    J -->|Approval| I
+    I --> K[Audit Trail & DB]
+    K --> L[PostgreSQL]
+    C --> M[Redis Queue]
+    M --> C
+```
+
+## 2. System Overview
+
 **Jules Supervisor** is an enterprise-grade, autonomous, policy-controlled AI orchestration platform that supervises Google Jules through the official Jules API.
 
 ```

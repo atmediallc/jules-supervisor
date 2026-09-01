@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { HistoricalPrecedentDto, RepositoryKnowledgeDto } from "@jules/ai";
-import type { DecisionSelect } from "@jules/db";
 import { InMemoryMemoryStore, createMockMemoryRepositories } from "@jules/test-utils";
 import { metrics } from "@jules/observability";
 import { MemoryContextService, MemoryRetrievalConfig } from "./memory-context.js";
@@ -191,7 +189,6 @@ describe("MemoryContextService", () => {
   });
 
   it("degrades to empty memory (and counts the failure) when the repos throw", async () => {
-    const store = new InMemoryMemoryStore();
     const failingDecisionRepo = {
       findPrecedents: () => {
         throw new Error("db down");

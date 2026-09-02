@@ -26,7 +26,7 @@ export type MockFailureMode =
   | "invalid-json"
   | "timeout";
 
-export interface MockOpenAiServer {
+export interface MockCompletionServer {
   server: Server;
   port: number;
   baseUrl: string;
@@ -60,7 +60,7 @@ function readBody(req: import("node:http").IncomingMessage): Promise<string> {
 }
 
 /** Build an OpenAI chat.completions response body whose content is a Decision JSON. */
-export function openAiCompletionBody(
+export function completionBody(
   content: string,
   model = "mock-http-model",
   promptTokens = 10,
@@ -86,10 +86,10 @@ export function openAiCompletionBody(
   };
 }
 
-export async function startMockOpenAiServer(
+export async function startMockCompletionServer(
   initialModes: MockFailureMode[] = ["ok"],
   model = "mock-http-model",
-): Promise<MockOpenAiServer> {
+): Promise<MockCompletionServer> {
   const state: ServerState = { modes: [...initialModes], requestCount: 0 };
 
   const server = createServer(async (req, res) => {
@@ -116,11 +116,11 @@ export async function startMockOpenAiServer(
         return;
       case "malformed":
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(openAiCompletionBody("THIS IS NOT JSON AT ALL", model)));
+        res.end(JSON.stringify(completionBody("THIS IS NOT JSON AT ALL", model)));
         return;
       case "invalid-json":
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(openAiCompletionBody(JSON.stringify({ bogus: true }), model)));
+        res.end(JSON.stringify(completionBody(JSON.stringify({ bogus: true }), model)));
         return;
       case "timeout":
         // Hang: never write the response. Client timeout aborts the request.
@@ -129,7 +129,7 @@ export async function startMockOpenAiServer(
       default: {
         const decision = createMockDecision();
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(openAiCompletionBody(JSON.stringify(decision), model)));
+        res.end(JSON.stringify(completionBody(JSON.stringify(decision), model)));
       }
     }
   });

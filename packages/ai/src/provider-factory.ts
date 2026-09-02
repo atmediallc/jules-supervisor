@@ -1,6 +1,6 @@
 import { AppConfig } from "@jules/config";
 import { MockAiDecisionProvider } from "./mock-provider.js";
-import { OpenAiDecisionProvider } from "./openai-provider.js";
+import { EndpointProvider } from "./endpoint-provider.js";
 import { standardCapabilities } from "./provider-capabilities.js";
 import { DefaultProviderRouter, ProviderEntry, ProviderRouter } from "./provider-router.js";
 import { IAiDecisionProvider } from "./types.js";
@@ -14,12 +14,13 @@ export interface CreateAiProviderOptions {
  * (which itself implements IAiDecisionProvider) so the pipeline stays agnostic
  * to failover/circuit/retry concerns.
  *
- * With a single configured provider (the current reality: `openai`/`omniroute`
- * are two base-URL variants of the same OpenAI-compatible class, and `mock` is
- * the test double) the router still delivers bounded same-provider retry
- * (wiring the previously-dead MAX_AI_RETRIES), per-attempt accounting, and a
- * circuit breaker. Additional secondary providers can be supplied via
- * `extendProviderRouter` without touching the pipeline.
+ * With a single configured provider (the current reality: any `AI_PROVIDER_TYPE`
+ * other than `mock` maps to the OpenAI-compatible adapter pointed at a
+ * configurable base URL, and `mock` is the test double) the router still
+ * delivers bounded same-provider retry (wiring the previously-dead
+ * MAX_AI_RETRIES), per-attempt accounting, and a circuit breaker. Additional
+ * secondary providers can be supplied via `extendProviderRouter` without
+ * touching the pipeline.
  */
 export function createAiProvider(
   config: AppConfig,
@@ -40,7 +41,7 @@ export function createAiProvider(
     });
   } else {
     providers.push({
-      provider: new OpenAiDecisionProvider(
+      provider: new EndpointProvider(
         {
           baseUrl: config.AI_BASE_URL,
           apiKey: config.AI_API_KEY,
@@ -66,7 +67,7 @@ export function createAiProvider(
   // entries so the router fails over correctly when the primary is unusable.
   for (const f of config.AI_FALLBACK_PROVIDERS ?? []) {
     providers.push({
-      provider: new OpenAiDecisionProvider(
+      provider: new EndpointProvider(
         {
           baseUrl: f.baseUrl,
           apiKey: f.apiKey,

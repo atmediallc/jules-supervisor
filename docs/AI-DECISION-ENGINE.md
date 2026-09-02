@@ -2,7 +2,7 @@
 
 ## 1. Engine Architecture
 
-The AI Decision Engine provides a structured, schema-enforced interface for evaluating Google Jules sessions. It currently ships a single active provider — the OpenAI-compatible adapter (default when `AI_PROVIDER_TYPE=openai`) and a `mock` provider for local DRY_RUN/testing. It is **not** a multi-provider router today; provider failover is a documented roadmap item, not an implemented capability.
+The AI Decision Engine provides a structured, schema-enforced interface for evaluating Google Jules sessions. It currently ships a single active provider — an OpenAI-compatible adapter (`EndpointProvider`, selected via `AI_PROVIDER_TYPE=endpoint|openai|openai-compatible|omniroute|generic`) and a `mock` provider for local DRY_RUN/testing. It is **not** a multi-provider router today; provider failover is a documented roadmap item, not an implemented capability.
 
 ```
 +-------------------------------------------------------------+

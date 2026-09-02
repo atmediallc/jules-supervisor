@@ -56,7 +56,7 @@ SupervisionPipeline.processActivity (pipeline.ts)
 | Distributed Lock  | `apps/worker/src/lock.ts`               | ✅ Production-grade: Redis Lua release, TTL expiry, ownership tokens |
 | Pipeline          | `apps/worker/src/pipeline.ts`           | ✅ Complete: 16-step processing chain                                |
 | Context Builder   | `packages/ai/src/context-builder.ts`    | ⚠️ Functional but minimal                                            |
-| AI Provider       | `packages/ai/src/openai-provider.ts`    | ✅ OpenAI-compatible, SSRF guard                                     |
+| AI Provider       | `packages/ai/src/endpoint-provider.ts`    | ✅ OpenAI-compatible, SSRF guard                                     |
 | Risk Engine       | `packages/core/src/risk.ts`             | ✅ Deterministic pattern matching                                    |
 | Policy Engine     | `packages/policy/src/engine.ts`         | ✅ 4 deterministic rules, extensible                                 |
 | Execution Gate    | `packages/core/src/execution-mode.ts`   | ✅ Comprehensive mode matrix                                         |

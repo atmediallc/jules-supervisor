@@ -10,7 +10,7 @@ import { DefaultProviderRouter, ProviderRouter } from "./provider-router.js";
 
 function config(overrides: Record<string, unknown> = {}) {
   return {
-    AI_PROVIDER_TYPE: "openai" as const,
+    AI_PROVIDER_TYPE: "endpoint" as const,
     AI_BASE_URL: "https://api.openai.com/v1",
     AI_API_KEY: "sk-test",
     AI_MODEL: "gpt-4o",
@@ -35,7 +35,7 @@ describe("createAiProvider factory", () => {
       healthSnapshot(): Array<{ name: string }>;
     };
     expect(router.healthSnapshot()).toHaveLength(1);
-    expect(router.healthSnapshot()[0]!.name).toBe("openai");
+    expect(router.healthSnapshot()[0]!.name).toBe("endpoint");
   });
 
   it("wires ordered fallback providers as secondary entries", () => {
@@ -60,7 +60,7 @@ describe("createAiProvider factory", () => {
 
     const snapshot = router.healthSnapshot();
     expect(snapshot).toHaveLength(3);
-    expect(snapshot[0]!.name).toBe("openai");
+    expect(snapshot[0]!.name).toBe("endpoint");
     expect(snapshot[1]!.name).toBe("omniroute");
     expect(snapshot[2]!.name).toBe("openai-backup");
     expect(router).toBeInstanceOf(DefaultProviderRouter);
@@ -68,19 +68,19 @@ describe("createAiProvider factory", () => {
 
   it("mock api key short-circuits to a single mock provider", () => {
     const router = createAiProvider(
-      config({ AI_API_KEY: "mock-ai-key-placeholder", AI_PROVIDER_TYPE: "openai" }) as never,
+      config({ AI_API_KEY: "mock-ai-key-placeholder", AI_PROVIDER_TYPE: "endpoint" }) as never,
     ) as unknown as { healthSnapshot(): Array<{ name: string }> };
     const snapshot = router.healthSnapshot();
     expect(snapshot).toHaveLength(1);
     expect(snapshot[0]!.name).toBe("mock");
   });
 
-  it("describe() reports resolved runtime provider and model from the router itself (configured openai, resolved mock)", () => {
+  it("describe() reports resolved runtime provider and model from the router itself (configured endpoint, resolved mock)", () => {
     const router = createAiProvider(
-      config({ AI_API_KEY: "mock-ai-key-placeholder", AI_PROVIDER_TYPE: "openai" }) as never,
+      config({ AI_API_KEY: "mock-ai-key-placeholder", AI_PROVIDER_TYPE: "endpoint" }) as never,
     ) as unknown as ProviderRouter;
 
-    // configured intent is openai, but the canonical factory resolves mock.
+    // configured intent is endpoint, but the canonical factory resolves mock.
     const info = router.describe();
     expect(info.primary.name).toBe("mock");
     expect(info.primary.model).toBe("mock-model-v1");
@@ -91,7 +91,7 @@ describe("createAiProvider factory", () => {
     const router = createAiProvider(config() as never) as unknown as ProviderRouter;
 
     const info = router.describe();
-    expect(info.primary.name).toBe("openai");
+    expect(info.primary.name).toBe("endpoint");
     expect(info.primary.model).toBe("gpt-4o");
   });
 
@@ -105,7 +105,7 @@ describe("createAiProvider factory", () => {
     ) as unknown as ProviderRouter;
 
     const info = router.describe();
-    expect(info.primary.name).toBe("openai");
+    expect(info.primary.name).toBe("endpoint");
     expect(info.primary.model).toBe("gpt-4o");
     expect(info.fallbacks).toEqual([{ name: "omniroute", model: "gpt-4o-mini" }]);
   });
@@ -113,7 +113,7 @@ describe("createAiProvider factory", () => {
   it("describe() and healthSnapshot() contain no API keys, passwords, or secret sentinels", () => {
     const SENTINEL = "SUPER_SECRET_SENTINEL_12345";
     const router = createAiProvider(
-      config({ AI_API_KEY: SENTINEL, AI_PROVIDER_TYPE: "openai" }) as never,
+      config({ AI_API_KEY: SENTINEL, AI_PROVIDER_TYPE: "endpoint" }) as never,
     ) as unknown as ProviderRouter;
 
     const info = router.describe();
@@ -125,8 +125,8 @@ describe("createAiProvider factory", () => {
     expect(serialized).not.toContain("DATABASE_URL");
     expect(serialized).not.toContain("NEXTAUTH_SECRET");
     expect(serialized).not.toContain("AUTH_PASSWORD");
-    // The resolved primary is real openai, not mock — metadata is from the factory
-    expect(info.primary.name).toBe("openai");
+    // The resolved primary is real endpoint, not mock — metadata is from the factory
+    expect(info.primary.name).toBe("endpoint");
     expect(info.primary.model).toBe("gpt-4o");
   });
 });

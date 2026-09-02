@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyAiError } from "./openai-provider.js";
+import { classifyAiError } from "./endpoint-provider.js";
 
 /**
  * Verifies that AI provider errors are bucketed into a small, fixed set of

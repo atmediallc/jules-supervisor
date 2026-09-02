@@ -4,7 +4,7 @@ import OpenAI from "openai";
 import { validateProviderUrl, validateProviderUrlWithDns } from "./ssrf-guard.js";
 import { AiDecisionResponse, BuiltContext, IAiDecisionProvider } from "./types.js";
 
-export interface OpenAiProviderConfig {
+export interface EndpointProviderConfig {
   baseUrl?: string;
   apiKey: string;
   model: string;
@@ -17,7 +17,7 @@ export interface OpenAiProviderConfig {
   trustedInternalHosts?: string[];
 }
 
-export class OpenAiDecisionProvider implements IAiDecisionProvider {
+export class EndpointProvider implements IAiDecisionProvider {
   public readonly name: string;
   private readonly client: OpenAI;
   private readonly model: string;
@@ -29,7 +29,7 @@ export class OpenAiDecisionProvider implements IAiDecisionProvider {
   private dnsValidated = false;
   private dnsValidationPromise: Promise<void> | null = null;
 
-  constructor(config: OpenAiProviderConfig, name = "openai") {
+  constructor(config: EndpointProviderConfig, name = "endpoint") {
     this.name = name;
     this.model = config.model;
     this.timeoutMs = config.timeoutMs ?? 30000;

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Decision, DecisionAction } from "@jules/core";
-import { startMockOpenAiServer } from "@jules/test-utils";
+import { startMockCompletionServer } from "@jules/test-utils";
 import { CircuitBreaker } from "./circuit-breaker.js";
-import { OpenAiDecisionProvider } from "./openai-provider.js";
+import { EndpointProvider } from "./endpoint-provider.js";
 import { standardCapabilities } from "./provider-capabilities.js";
 import { DefaultProviderRouter, ProviderEntry } from "./provider-router.js";
 import { AiDecisionResponse, BuiltContext, IAiDecisionProvider } from "./types.js";
@@ -219,13 +219,13 @@ describe("ProviderRouter failover matrix", () => {
 // the actual OpenAI HTTP client, not just fake provider objects.
 describe("ProviderRouter real HTTP failover", () => {
   it("fails over from a 500-ing primary to a healthy fallback", async () => {
-    const primary = await startMockOpenAiServer(["http-500"]);
-    const fallback = await startMockOpenAiServer(["ok"]);
+    const primary = await startMockCompletionServer(["http-500"]);
+    const fallback = await startMockCompletionServer(["ok"]);
     try {
       const router = new DefaultProviderRouter({
         providers: [
           {
-            provider: new OpenAiDecisionProvider(
+            provider: new EndpointProvider(
               {
                 baseUrl: primary.baseUrl,
                 apiKey: "test-key",
@@ -244,7 +244,7 @@ describe("ProviderRouter real HTTP failover", () => {
             health: "HEALTHY",
           },
           {
-            provider: new OpenAiDecisionProvider(
+            provider: new EndpointProvider(
               {
                 baseUrl: fallback.baseUrl,
                 apiKey: "test-key",
@@ -281,13 +281,13 @@ describe("ProviderRouter real HTTP failover", () => {
   });
 
   it("falls back immediately on permanent auth failure (no pointless retries)", async () => {
-    const primary = await startMockOpenAiServer(["http-401"]);
-    const fallback = await startMockOpenAiServer(["ok"]);
+    const primary = await startMockCompletionServer(["http-401"]);
+    const fallback = await startMockCompletionServer(["ok"]);
     try {
       const router = new DefaultProviderRouter({
         providers: [
           {
-            provider: new OpenAiDecisionProvider(
+            provider: new EndpointProvider(
               {
                 baseUrl: primary.baseUrl,
                 apiKey: "bad-key",
@@ -306,7 +306,7 @@ describe("ProviderRouter real HTTP failover", () => {
             health: "HEALTHY",
           },
           {
-            provider: new OpenAiDecisionProvider(
+            provider: new EndpointProvider(
               {
                 baseUrl: fallback.baseUrl,
                 apiKey: "test-key",
@@ -339,13 +339,13 @@ describe("ProviderRouter real HTTP failover", () => {
   });
 
   it("treats a malformed (non-JSON) response as output failure and falls back", async () => {
-    const primary = await startMockOpenAiServer(["malformed"]);
-    const fallback = await startMockOpenAiServer(["ok"]);
+    const primary = await startMockCompletionServer(["malformed"]);
+    const fallback = await startMockCompletionServer(["ok"]);
     try {
       const router = new DefaultProviderRouter({
         providers: [
           {
-            provider: new OpenAiDecisionProvider(
+            provider: new EndpointProvider(
               {
                 baseUrl: primary.baseUrl,
                 apiKey: "test-key",
@@ -364,7 +364,7 @@ describe("ProviderRouter real HTTP failover", () => {
             health: "HEALTHY",
           },
           {
-            provider: new OpenAiDecisionProvider(
+            provider: new EndpointProvider(
               {
                 baseUrl: fallback.baseUrl,
                 apiKey: "test-key",

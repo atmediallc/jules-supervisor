@@ -60,7 +60,9 @@ export const EnvSchema = z.object({
   JULES_RATE_LIMIT_RPS: z.coerce.number().min(1).max(100).default(5),
 
   // AI Provider & OmniRoute Configuration
-  AI_PROVIDER_TYPE: z.enum(["openai", "omniroute", "mock"]).default("openai"),
+  AI_PROVIDER_TYPE: z
+    .enum(["openai", "openai-compatible", "omniroute", "generic", "endpoint", "mock"])
+    .default("endpoint"),
   AI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   AI_API_KEY: z.string().min(1).default("mock-ai-key-placeholder"),
   AI_MODEL: z.string().default("gpt-4o"),
@@ -107,7 +109,7 @@ export const EnvSchema = z.object({
             );
           }
           return {
-            name: item.name ?? "openai",
+            name: item.name ?? "endpoint",
             baseUrl: item.baseUrl,
             apiKey: item.apiKey,
             model: item.model,

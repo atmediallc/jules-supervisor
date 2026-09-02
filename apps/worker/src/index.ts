@@ -49,7 +49,7 @@ async function main() {
   // AI Provider — created from the canonical factory so observability reflects
   // the ACTUAL resolved provider, not just the configured intent. The factory
   // may resolve to mock (e.g. when AI_API_KEY is a placeholder) even when
-  // AI_PROVIDER_TYPE claims openai; we log runtime truth below.
+  // AI_PROVIDER_TYPE claims a real endpoint; we log runtime truth below.
   const aiProvider = createAiProvider(config);
   const providerInfo = aiProvider.describe();
   logger.info("Initializing Jules Supervisor Worker Daemon...", {

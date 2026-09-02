@@ -342,7 +342,7 @@ export default function SettingsPage() {
                               }
                               className="font-mono text-xs text-indigo-300 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer"
                             >
-                              {["openai", "omniroute", "mock"].map((opt) => (
+                              {["endpoint", "omniroute", "mock"].map((opt) => (
                                 <option key={opt} value={opt}>
                                   {opt}
                                 </option>

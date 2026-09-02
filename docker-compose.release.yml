@@ -47,7 +47,7 @@ services:
       REDIS_URL: redis://redis:6379
       JULES_API_BASE_URL: ${JULES_API_BASE_URL:-https://jules.googleapis.com/v1alpha}
       JULES_API_KEY: ${JULES_API_KEY:-mock-jules-key-placeholder}
-      AI_PROVIDER_TYPE: ${AI_PROVIDER_TYPE:-openai}
+      AI_PROVIDER_TYPE: ${AI_PROVIDER_TYPE:-endpoint}
       AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
       AI_API_KEY: ${AI_API_KEY:-mock-ai-key-placeholder}
       AI_MODEL: ${AI_MODEL:-gpt-4o}
@@ -69,7 +69,7 @@ services:
       SUPERVISOR_MODE: ${SUPERVISOR_MODE:-DRY_RUN}
       DATABASE_URL: postgresql://${DB_USER:-jules_user}:${DB_PASSWORD:-jules_password}@postgres:5432/${DB_NAME:-jules_supervisor}?sslmode=disable
       REDIS_URL: redis://redis:6379
-      AI_PROVIDER_TYPE: ${AI_PROVIDER_TYPE:-openai}
+      AI_PROVIDER_TYPE: ${AI_PROVIDER_TYPE:-endpoint}
       AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
       AI_MODEL: ${AI_MODEL:-gpt-4o}
       LOG_LEVEL: ${LOG_LEVEL:-info}

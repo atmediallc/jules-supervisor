@@ -107,10 +107,10 @@ const SETTINGS_CATALOG: Record<
 
   // ── AI Provider ──
   AI_PROVIDER_TYPE: {
-    defaultValue: "openai",
+    defaultValue: "endpoint",
     category: "ai",
     isSecret: false,
-    description: "AI provider type: openai, omniroute, mock",
+    description: "AI provider type: endpoint, omniroute, mock",
   },
   AI_BASE_URL: {
     defaultValue: "https://api.openai.com/v1",

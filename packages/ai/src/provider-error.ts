@@ -1,4 +1,4 @@
-import { classifyAiError } from "./openai-provider.js";
+import { classifyAiError } from "./endpoint-provider.js";
 
 /**
  * Structured failure classification for AI provider attempts.

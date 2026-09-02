@@ -9,7 +9,7 @@ describe("CircuitBreaker", () => {
   });
 
   it("opens after the failure threshold within the window", () => {
-    let clock = 0;
+    const clock = 0;
     const cb = new CircuitBreaker({ failureThreshold: 3, windowMs: 60_000, now: () => clock });
     expect(cb.onFailure()).toBe(false);
     expect(cb.onFailure()).toBe(false);
@@ -19,7 +19,7 @@ describe("CircuitBreaker", () => {
   });
 
   it("success resets the failure window", () => {
-    let clock = 0;
+    const clock = 0;
     const cb = new CircuitBreaker({ failureThreshold: 3, windowMs: 60_000, now: () => clock });
     cb.onFailure();
     cb.onFailure();
@@ -68,7 +68,7 @@ describe("CircuitBreaker", () => {
   });
 
   it("reset returns to CLOSED", () => {
-    let clock = 0;
+    const clock = 0;
     const cb = new CircuitBreaker({ failureThreshold: 2, now: () => clock });
     cb.onFailure();
     cb.onFailure();

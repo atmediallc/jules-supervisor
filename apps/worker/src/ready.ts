@@ -12,6 +12,9 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
       const db = getDatabase(config.DATABASE_URL);
       await db.execute('SELECT 1');
       const redis = new Redis(config.REDIS_URL);
+      redis.on("error", () => {
+        /* ping below will reject and produce the 503 */
+      });
       await redis.ping();
       await redis.quit();
       res.writeHead(200, { 'Content-Type': 'application/json' });

@@ -64,7 +64,7 @@ export class OpenAiDecisionProvider implements IAiDecisionProvider {
    * successful validation (DNS changes mid-run are out of scope for a static
    * operator-configured endpoint).
    */
-  public async validateSsrSafe(signal?: AbortSignal): Promise<void> {
+  public async validateSsrSafe(_signal?: AbortSignal): Promise<void> {
     if (this.dnsValidated) return;
     if (!this.dnsValidationPromise) {
       this.dnsValidationPromise = (async () => {

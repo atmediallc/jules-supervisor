@@ -34,11 +34,6 @@ export interface CircuitBreakerOptions {
   now?: () => number;
 }
 
-interface BreakerCounters {
-  failures: number[];
-  openedAt: number | null;
-}
-
 export class CircuitBreaker {
   private readonly failureThreshold: number;
   private readonly windowMs: number;

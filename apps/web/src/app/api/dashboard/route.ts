@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getConfig } from "@jules/config";
 import {
   approvalRequests,
@@ -6,7 +6,6 @@ import {
   getDatabase,
   sql,
   SessionRepository,
-  DecisionRepository,
 } from "@jules/db";
 import { logRouteError } from "../route-logger";
 
@@ -16,12 +15,11 @@ import { logRouteError } from "../route-logger";
  */
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   const config = getConfig();
   try {
     const db = getDatabase(config.DATABASE_URL);
     const sessions = new SessionRepository(db);
-    const decisionsRepo = new DecisionRepository(db);
 
     const allSessions = await sessions.list(500);
     const activeCount = allSessions.filter(

@@ -1,0 +1,331 @@
+"use client";
+
+import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useId, useRef, useState } from "react";
+import {
+  ShieldCheck,
+  User,
+  LockKeyhole,
+  Eye,
+  EyeOff,
+  Activity,
+  ScrollText,
+  BrainCircuit,
+  CheckCircle2,
+  Play,
+  ArrowRight,
+  Loader2,
+  Terminal,
+} from "lucide-react";
+
+/** Brand mark — layered shield, the Jules Supervisor visual primitive. */
+function BrandMark() {
+  return (
+    <div
+      className="relative w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500/15 via-violet-500/10 to-cyan-500/10 ring-1 ring-inset ring-white/10 flex items-center justify-center shadow-[0_0_24px_-6px_rgba(99,102,241,0.5)]"
+    >
+      <span className="absolute inset-0 rounded-xl bg-gradient-to-br from-indigo-400/20 to-transparent opacity-60" />
+      <ShieldCheck className="w-5 h-5 text-indigo-300 relative" strokeWidth={1.7} />
+    </div>
+  );
+}
+
+/** Capability nodes in the supervision pipeline (descriptive, not live state). */
+const PIPELINE_NODES = [
+  { icon: Terminal, label: "Jules Session", sub: "Autonomous session" },
+  { icon: ScrollText, label: "Policy Engine", sub: "Rules & guardrails" },
+  { icon: BrainCircuit, label: "AI Decision", sub: "Evaluation & risk" },
+  { icon: CheckCircle2, label: "Human Approval", sub: "Oversight gate" },
+  { icon: Play, label: "Execution", sub: "Controlled run" },
+];
+
+function SupervisionPipeline() {
+  return (
+    <div className="relative">
+      <ol className="relative space-y-0">
+        {PIPELINE_NODES.map(({ icon: Icon, label, sub }, i) => (
+          <li key={label} className="relative flex items-start gap-4">
+            {i < PIPELINE_NODES.length - 1 && (
+              <span
+                aria-hidden
+                className="absolute left-[13px] top-10 bottom-[-8px] w-px bg-gradient-to-b from-indigo-500/40 via-slate-600/30 to-transparent"
+              />
+            )}
+            <span className="relative mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/80 ring-1 ring-inset ring-white/5">
+              <Icon className="h-3.5 w-3.5 text-indigo-300/90" strokeWidth={1.8} />
+            </span>
+            <div className="pb-6">
+              <p className="text-sm font-medium text-slate-200">{label}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function PasswordField({
+  id,
+  value,
+  onChange,
+  invalid,
+  describedBy,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  invalid: boolean;
+  describedBy?: string;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <LockKeyhole
+        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+        strokeWidth={1.8}
+        aria-hidden
+      />
+      <input
+        id={id}
+        type={visible ? "text" : "password"}
+        autoComplete="current-password"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
+        placeholder=" "
+        required
+        className={`peer w-full rounded-lg border bg-slate-900/60 py-2.5 pl-10 pr-11 text-sm text-slate-100 placeholder-transparent shadow-inner outline-none transition focus:ring-2 focus:ring-indigo-500/60 ${
+          invalid
+            ? "border-rose-500/70 focus:border-rose-500"
+            : "border-slate-700/80 focus:border-indigo-500/60"
+        }`}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? "Hide password" : "Show password"}
+        aria-pressed={visible}
+        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 transition-colors hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60"
+      >
+        {visible ? (
+          <EyeOff className="h-4 w-4" strokeWidth={1.8} />
+        ) : (
+          <Eye className="h-4 w-4" strokeWidth={1.8} />
+        )}
+      </button>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  const router = useRouter();
+  const usernameId = useId();
+  const passwordId = useId();
+  const errorId = useId();
+  const submitLock = useRef(false);
+
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading">("idle");
+  const [touched, setTouched] = useState(false);
+
+  const submitting = status === "loading";
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting || submitLock.current) return;
+    setError("");
+    setStatus("loading");
+    submitLock.current = true;
+    try {
+      const result = await signIn("credentials", {
+        username,
+        password,
+        redirect: false,
+      });
+      if (result?.error) {
+        setError("Unable to sign in with those credentials. Please try again.");
+        setStatus("idle");
+        setTouched(true);
+      } else {
+        router.replace("/");
+      }
+    } catch {
+      setError("Jules Supervisor is temporarily unreachable. Please try again.");
+      setStatus("idle");
+    } finally {
+      submitLock.current = false;
+    }
+  };
+
+  return (
+    <div className="relative flex min-h-screen bg-slate-950">
+      {/* Ambient background */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-40 -top-40 h-[34rem] w-[34rem] rounded-full bg-indigo-600/10 blur-[120px]" />
+        <div className="absolute bottom-[-16rem] right-[-10rem] h-[30rem] w-[30rem] rounded-full bg-cyan-500/10 blur-[120px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(9,13,22,0.7)_100%)]" />
+        {/* Faint grid */}
+        <div className="absolute inset-0 opacity-[0.04] [background-image:linear-gradient(to_right,#94a3b8_1px,transparent_1px),linear-gradient(to_bottom,#94a3b8_1px,transparent_1px)] [background-size:44px_44px]" />
+      </div>
+
+      {/* LEFT — brand experience */}
+      <aside className="relative z-10 hidden w-[55%] flex-col justify-between overflow-hidden border-r border-slate-800/60 bg-slate-950/40 lg:flex xl:w-[58%]">
+        <div className="p-10 xl:p-14">
+          <div className="flex items-center gap-3.5">
+            <BrandMark />
+            <div>
+              <p className="text-[15px] font-semibold tracking-[0.14em] text-white">
+                JULES SUPERVISOR
+              </p>
+              <p className="mt-0.5 text-[11px] font-mono tracking-wide text-slate-500">
+                CONTROL PLANE
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-16 max-w-md xl:mt-24">
+            <h1 className="text-3xl font-semibold leading-tight text-white xl:text-[2.1rem] xl:leading-[1.2]">
+              Autonomous oversight.
+              <br />
+              <span className="bg-gradient-to-r from-indigo-300 via-violet-200 to-cyan-200 bg-clip-text text-transparent">
+                Human control.
+              </span>
+            </h1>
+            <p className="mt-5 text-[15px] leading-relaxed text-slate-400">
+              Supervise autonomous Jules sessions, AI decisions, approvals, policies, and
+              execution from one secure control plane.
+            </p>
+          </div>
+        </div>
+
+        {/* Supervision pipeline — descriptive capability flow */}
+        <div className="relative mx-10 mb-12 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-6 backdrop-blur-sm xl:mx-14 xl:p-7">
+          <div className="mb-5 flex items-center justify-between">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Supervision pipeline
+            </p>
+            <span className="flex items-center gap-1.5 rounded-full border border-slate-700/70 bg-slate-900/80 px-2 py-0.5 font-mono text-[10px] text-slate-500">
+              <Activity className="h-3 w-3 text-indigo-400/80 motion-safe:animate-pulse" strokeWidth={1.8} />
+              POLICY-GATED
+            </span>
+          </div>
+          <SupervisionPipeline />
+        </div>
+      </aside>
+
+      {/* RIGHT — login panel */}
+      <main className="relative z-10 flex flex-1 items-center justify-center px-5 py-10 sm:px-8">
+        <div className="w-full max-w-[26rem]">
+          {/* Mobile brand */}
+          <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <BrandMark />
+            <div>
+              <p className="text-sm font-semibold tracking-[0.14em] text-white">JULES SUPERVISOR</p>
+              <p className="text-[11px] font-mono text-slate-500">CONTROL PLANE</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/50 p-8 shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_24px_60px_-24px_rgba(0,0,0,0.7)] backdrop-blur-sm sm:p-9">
+            <h2 className="text-xl font-semibold text-white">Welcome back</h2>
+            <p className="mt-1.5 text-sm text-slate-400">
+              Sign in to continue to the supervisor control plane.
+            </p>
+
+            <form onSubmit={handleSubmit} noValidate aria-busy={submitting} className="mt-7 space-y-5">
+              <div>
+                <label
+                  htmlFor={usernameId}
+                  className="mb-1.5 block text-xs font-medium text-slate-300"
+                >
+                  Username
+                </label>
+                <div className="relative">
+                  <User
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+                    strokeWidth={1.8}
+                    aria-hidden
+                  />
+                  <input
+                    id={usernameId}
+                    type="text"
+                    autoComplete="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder=" "
+                    required
+                    aria-invalid={touched && error ? true : undefined}
+                    aria-describedby={error ? errorId : undefined}
+                    className={`peer w-full rounded-lg border bg-slate-900/60 py-2.5 pl-10 pr-3 text-sm text-slate-100 placeholder-transparent shadow-inner outline-none transition focus:ring-2 focus:ring-indigo-500/60 ${
+                      touched && error
+                        ? "border-rose-500/70 focus:border-rose-500"
+                        : "border-slate-700/80 focus:border-indigo-500/60"
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor={passwordId}
+                  className="mb-1.5 block text-xs font-medium text-slate-300"
+                >
+                  Password
+                </label>
+                <PasswordField
+                  id={passwordId}
+                  value={password}
+                  onChange={setPassword}
+                  invalid={touched && !!error}
+                  describedBy={error ? errorId : undefined}
+                />
+              </div>
+
+              {error ? (
+                <div
+                  id={errorId}
+                  role="alert"
+                  className="flex items-start gap-2.5 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3.5 py-2.5 text-sm text-rose-300"
+                >
+                  <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-400" aria-hidden />
+                  <p>{error}</p>
+                </div>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="group relative flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-indigo-500 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_-8px_rgba(79,70,229,0.8)] transition hover:from-indigo-400 hover:to-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
+                    <span>Signing in…</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Sign in</span>
+                    <ArrowRight
+                      className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                  </>
+                )}
+              </button>
+            </form>
+
+            <p className="mt-7 flex items-center justify-center gap-2 border-t border-slate-800/70 pt-5 text-center text-xs text-slate-500">
+              <ShieldCheck className="h-3.5 w-3.5 text-slate-600" strokeWidth={1.8} aria-hidden />
+              Protected access to the Jules Supervisor control plane.
+            </p>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

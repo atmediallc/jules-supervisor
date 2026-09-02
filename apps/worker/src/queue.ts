@@ -26,6 +26,9 @@ export class BullMqSupervisorQueue implements ISupervisorQueue {
       maxRetriesPerRequest: null,
       lazyConnect: true,
     });
+    this.redis.on("error", (err) => {
+      logger.warn("BullMQ Redis connection error", { error: (err as Error).message });
+    });
 
     await this.redis.connect();
 

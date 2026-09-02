@@ -201,7 +201,7 @@ describe("ProviderRouter failover matrix", () => {
   });
 
   it("health snapshot reports circuit state without secrets", async () => {
-    let clock = 0;
+    const clock = 0;
     const primary = new FakeProvider("primary", "always-fail");
     const breaker = new CircuitBreaker({ failureThreshold: 1, windowMs: 60_000, now: () => clock });
     breaker.onFailure();

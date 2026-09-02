@@ -85,6 +85,9 @@ async function main() {
   if (config.REDIS_ENABLED && !config.USE_IN_MEMORY_QUEUE_FALLBACK) {
     try {
       const redisClient = new Redis(config.REDIS_URL, { lazyConnect: true });
+      redisClient.on("error", (err) => {
+        logger.warn("Redis lock client connection error", { error: (err as Error).message });
+      });
       await redisClient.connect();
       lock = new RedisDistributedLock(redisClient);
       lockRedisClient = redisClient;

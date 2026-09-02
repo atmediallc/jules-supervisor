@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getConfig } from "@jules/config";
 import { getDatabase, policies, sql } from "@jules/db";
 import { logRouteError } from "../route-logger";
@@ -9,7 +9,7 @@ import { logRouteError } from "../route-logger";
  */
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   const config = getConfig();
   try {
     const db = getDatabase(config.DATABASE_URL);

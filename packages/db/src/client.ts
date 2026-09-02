@@ -25,6 +25,16 @@ export function getDatabase(databaseUrl?: string): Database {
     idleTimeoutMillis: 30000,
   });
 
+  // CRITICAL: pg.Pool emits an 'error' event when an idle client's connection
+  // dies (e.g. PostgreSQL restart, administrative termination, network blip).
+  // With no listener, Node's default behavior rethrows the error and crashes
+  // the entire process (web AND worker). Attaching a handler keeps the pool
+  // alive — pg-pool destroys the dead client and allocates a fresh one for the
+  // next query, so the daemon survives database restarts without intervention.
+  _pool.on("error", (err) => {
+    console.error("[jules-db] PostgreSQL pool error (idle client terminated):", err.message);
+  });
+
   _db = drizzle(_pool, { schema });
   return _db;
 }

@@ -1,0 +1,45 @@
+$ turbo run dev
+ÔÇó turbo 2.10.12
+
+   ÔÇó Packages in scope: @jules/ai, @jules/config, @jules/core, @jules/db, @jules/jules-client, @jules/observability, @jules/policy, @jules/shared, @jules/test-utils, @jules/web, @jules/worker
+   ÔÇó Running dev in 11 packages
+   ÔÇó Remote caching disabled
+
+@jules/web:dev: cache bypass, force executing cd7b15f84cb006b2
+@jules/worker:dev: cache bypass, force executing d84b2acbe6a8969b
+@jules/web:dev: $ next dev --port 3000
+@jules/worker:dev: $ tsx watch src/index.ts
+@jules/worker:dev: {"level":30,"time":"2026-09-02T20:24:49.139Z","pid":10804,"hostname":"Angelo-Tejada","msg":"Loaded 4 setting(s) from database"}
+@jules/worker:dev: {"level":30,"time":"2026-09-02T20:24:49.140Z","pid":10804,"hostname":"Angelo-Tejada","mode":"DRY_RUN","configuredProvider":"endpoint","resolvedProvider":"mock","resolvedModel":"mock-model-v1","fallbackEnabled":false,"providerCount":1,"msg":"Initializing Jules Supervisor Worker Daemon..."}
+@jules/worker:dev: {"level":30,"time":"2026-09-02T20:24:49.177Z","pid":10804,"hostname":"Angelo-Tejada","state":"RUNNING","changedAt":"2026-09-01T16:36:42.568Z","changedBy":"Admin","reason":"cert validation complete","msg":"Runtime kill switch state at boot"}
+@jules/worker:dev: {"level":30,"time":"2026-09-02T20:24:49.191Z","pid":10804,"hostname":"Angelo-Tejada","msg":"BullMQ Supervisor Worker Queue started."}
+@jules/worker:dev: Health & metrics server listening on port 8080
+@jules/worker:dev: Ready server listening on port 8081
+@jules/worker:dev: {"level":30,"time":"2026-09-02T20:24:49.194Z","pid":10804,"hostname":"Angelo-Tejada","pollIntervalMs":5000,"mode":"DRY_RUN","msg":"Starting Jules Session Watcher / Poller..."}
+@jules/web:dev:    [1m[38;2;173;127;168mÔû▓ Next.js 15.5.24[39m[22m
+@jules/web:dev:    - Local:        http://localhost:3000
+@jules/web:dev:    - Network:      http://100.125.165.25:3000
+@jules/web:dev:    - Environments: .env
+@jules/web:dev: 
+@jules/web:dev:  [32m[1mÔ£ô[22m[39m Starting...
+@jules/web:dev:  [32m[1mÔ£ô[22m[39m Ready in 4.5s
+@jules/web:dev:  [32m[1mÔ£ô[22m[39m Compiled /middleware in 343ms (267 modules)
+@jules/web:dev:  [37m[1mÔùï[22m[39m Compiling /api/auth/[...nextauth] ...
+@jules/web:dev:  [32m[1mÔ£ô[22m[39m Compiled /api/auth/[...nextauth] in 2.6s (564 modules)
+@jules/web:dev:  GET /api/auth/csrf [32m200[39m in 3676ms
+@jules/web:dev:  POST /api/auth/callback/credentials [32m200[39m in 51ms
+@jules/web:dev:  [37m[1mÔùï[22m[39m Compiling /api/settings/models ...
+@jules/web:dev:  [32m[1mÔ£ô[22m[39m Compiled /api/settings/models in 1556ms (795 modules)
+@jules/web:dev:  GET /api/settings/models [32m200[39m in 7558ms
+@jules/web:dev:  GET /api/auth/csrf [32m200[39m in 129ms
+@jules/web:dev:  POST /api/auth/callback/credentials [32m200[39m in 19ms
+@jules/web:dev:  GET /api/settings/models [32m200[39m in 64ms
+@jules/web:dev:  [37m[1mÔùï[22m[39m Compiling /settings ...
+@jules/web:dev:  [32m[1mÔ£ô[22m[39m Compiled /settings in 1532ms (704 modules)
+@jules/web:dev:  GET /settings [32m200[39m in 2158ms
+@jules/web:dev:  [32m[1mÔ£ô[22m[39m Compiled /api/settings in 454ms (861 modules)
+@jules/web:dev:  GET /api/settings [32m200[39m in 935ms
+@jules/web:dev:  [32m[1mÔ£ô[22m[39m Compiled /api/settings/models in 223ms (813 modules)
+@jules/web:dev:  GET /api/settings/models [32m200[39m in 6865ms
+@jules/web:dev:  [32m[1mÔ£ô[22m[39m Compiled in 799ms (971 modules)
+@jules/web:dev:  GET /settings [32m200[39m in 273ms

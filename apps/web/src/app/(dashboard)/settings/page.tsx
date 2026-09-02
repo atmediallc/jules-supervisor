@@ -62,6 +62,19 @@ async function loadSettingsFromApi(): Promise<SettingItem[]> {
   return (data.settings as SettingItem[]) ?? [];
 }
 
+async function loadModelsFromApi(): Promise<string[]> {
+  try {
+    const res = await fetch("/api/settings/models", { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.models as string[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+const MODEL_LISTABLE_TYPES = new Set(["endpoint", "omniroute", "openai", "openai-compatible", "generic"]);
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SettingItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +83,8 @@ export default function SettingsPage() {
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -86,6 +101,30 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
+
+  // Load available models whenever the provider type is one that can list them.
+  const providerTypeSetting = settings.find((s) => s.key === "AI_PROVIDER_TYPE");
+  const providerType =
+    (edits.AI_PROVIDER_TYPE ?? providerTypeSetting?.rawValue ?? providerTypeSetting?.value) ?? "";
+  const canListModels = MODEL_LISTABLE_TYPES.has(providerType);
+
+  useEffect(() => {
+    if (!canListModels) {
+      setAvailableModels([]);
+      return;
+    }
+    let cancelled = false;
+    setModelsLoading(true);
+    loadModelsFromApi().then((models) => {
+      if (!cancelled) {
+        setAvailableModels(models);
+        setModelsLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [canListModels]);
 
   const grouped = settings.reduce<Record<string, SettingItem[]>>((acc, s) => {
     (acc[s.category] ??= []).push(s);
@@ -348,6 +387,29 @@ export default function SettingsPage() {
                                 </option>
                               ))}
                             </select>
+                          ) : item.key === "AI_MODEL" && canListModels ? (
+                            // Model picker: free-text input with autocomplete over every
+                            // model the provider exposes. Falls back to plain input when
+                            // none can be listed.
+                            <div className="flex items-center gap-2 shrink-0">
+                              <input
+                                type="text"
+                                list="available-models"
+                                value={displayValue ?? ""}
+                                onChange={(e) =>
+                                  setEdits((prev) => ({ ...prev, [item.key]: e.target.value }))
+                                }
+                                className="font-mono text-xs text-indigo-300 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 min-w-45 focus:outline-none focus:border-indigo-500"
+                                placeholder={modelsLoading ? "Loading models…" : "Type to search model"}
+                              />
+                              {!modelsLoading && availableModels.length > 0 && (
+                                <datalist id="available-models">
+                                  {availableModels.map((m) => (
+                                    <option key={m} value={m} />
+                                  ))}
+                                </datalist>
+                              )}
+                            </div>
                           ) : item.key.endsWith("_ENABLED") || item.key.startsWith("ALLOW_") ? (
                             // Boolean toggle
                             <select

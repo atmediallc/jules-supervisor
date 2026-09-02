@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createAiProvider } from "./provider-factory.js";
-import { DefaultProviderRouter } from "./provider-router.js";
+import { DefaultProviderRouter, ProviderRouter } from "./provider-router.js";
 
 /**
  * Factory contract tests: build a router from an AppConfig-shaped object and
@@ -73,5 +73,60 @@ describe("createAiProvider factory", () => {
     const snapshot = router.healthSnapshot();
     expect(snapshot).toHaveLength(1);
     expect(snapshot[0]!.name).toBe("mock");
+  });
+
+  it("describe() reports resolved runtime provider and model from the router itself (configured openai, resolved mock)", () => {
+    const router = createAiProvider(
+      config({ AI_API_KEY: "mock-ai-key-placeholder", AI_PROVIDER_TYPE: "openai" }) as never,
+    ) as unknown as ProviderRouter;
+
+    // configured intent is openai, but the canonical factory resolves mock.
+    const info = router.describe();
+    expect(info.primary.name).toBe("mock");
+    expect(info.primary.model).toBe("mock-model-v1");
+    expect(info.fallbacks).toHaveLength(0);
+  });
+
+  it("describe() reports the real provider identity from a configured OpenAI provider without a network call", () => {
+    const router = createAiProvider(config() as never) as unknown as ProviderRouter;
+
+    const info = router.describe();
+    expect(info.primary.name).toBe("openai");
+    expect(info.primary.model).toBe("gpt-4o");
+  });
+
+  it("describe() exposes ordered fallbacks without claiming a fallback is primary", () => {
+    const router = createAiProvider(
+      config({
+        AI_FALLBACK_PROVIDERS: [
+          { name: "omniroute", baseUrl: "https://omniroute.example/v1", apiKey: "sk-omniroute", model: "gpt-4o-mini" },
+        ],
+      }) as never,
+    ) as unknown as ProviderRouter;
+
+    const info = router.describe();
+    expect(info.primary.name).toBe("openai");
+    expect(info.primary.model).toBe("gpt-4o");
+    expect(info.fallbacks).toEqual([{ name: "omniroute", model: "gpt-4o-mini" }]);
+  });
+
+  it("describe() and healthSnapshot() contain no API keys, passwords, or secret sentinels", () => {
+    const SENTINEL = "SUPER_SECRET_SENTINEL_12345";
+    const router = createAiProvider(
+      config({ AI_API_KEY: SENTINEL, AI_PROVIDER_TYPE: "openai" }) as never,
+    ) as unknown as ProviderRouter;
+
+    const info = router.describe();
+    const snapshot = router.healthSnapshot();
+    const serialized = JSON.stringify({ info, snapshot });
+
+    expect(serialized).not.toContain(SENTINEL);
+    expect(serialized).not.toContain("sk-test");
+    expect(serialized).not.toContain("DATABASE_URL");
+    expect(serialized).not.toContain("NEXTAUTH_SECRET");
+    expect(serialized).not.toContain("AUTH_PASSWORD");
+    // The resolved primary is real openai, not mock — metadata is from the factory
+    expect(info.primary.name).toBe("openai");
+    expect(info.primary.model).toBe("gpt-4o");
   });
 });

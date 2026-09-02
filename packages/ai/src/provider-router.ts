@@ -60,6 +60,15 @@ export interface ProviderRouter {
   ): Promise<RoutedDecisionResponse>;
   /** Snapshot of provider health states for the control plane (no secrets). */
   healthSnapshot(): Array<{ name: string; model: string; health: ProviderHealthState; state: string }>;
+  /**
+   * Canonical runtime provider identity for observability. Derives the
+   * resolved primary (the first registered provider) and any ordered fallbacks
+   * from the router's OWN state — never from configuration. This is the single
+   * source of truth for "what provider is actually executing", and decision
+   * persistence (response.provider / response.model) agrees with it.
+   * Contains no credentials.
+   */
+  describe(): { primary: { name: string; model: string }; fallbacks: Array<{ name: string; model: string }> };
 }
 
 /**
@@ -222,6 +231,20 @@ export class DefaultProviderRouter implements ProviderRouter {
       health: entry.health,
       state: entry.breaker?.getState() ?? "CLOSED",
     }));
+  }
+
+  public describe(): { primary: { name: string; model: string }; fallbacks: Array<{ name: string; model: string }> } {
+    const [first, ...rest] = this.providers;
+    return {
+      primary: {
+        name: first?.provider.name ?? "unknown",
+        model: first?.capabilities.model ?? "unknown",
+      },
+      fallbacks: rest.map((entry) => ({
+        name: entry.provider.name,
+        model: entry.capabilities.model,
+      })),
+    };
   }
 
   /** Access to the per-attempt data of the most recent routed attempt (for accounting). */

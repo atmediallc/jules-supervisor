@@ -45,9 +45,20 @@ async function main() {
 
   // 3. Final config with DB overrides applied
   const config = getConfig();
+
+  // AI Provider — created from the canonical factory so observability reflects
+  // the ACTUAL resolved provider, not just the configured intent. The factory
+  // may resolve to mock (e.g. when AI_API_KEY is a placeholder) even when
+  // AI_PROVIDER_TYPE claims openai; we log runtime truth below.
+  const aiProvider = createAiProvider(config);
+  const providerInfo = aiProvider.describe();
   logger.info("Initializing Jules Supervisor Worker Daemon...", {
     mode: config.SUPERVISOR_MODE,
-    provider: config.AI_PROVIDER_TYPE,
+    configuredProvider: config.AI_PROVIDER_TYPE,
+    resolvedProvider: providerInfo.primary.name,
+    resolvedModel: providerInfo.primary.model,
+    fallbackEnabled: providerInfo.fallbacks.length > 0,
+    providerCount: 1 + providerInfo.fallbacks.length,
   });
 
   const sessionRepo = new SessionRepository(db);
@@ -70,8 +81,8 @@ async function main() {
           maxRetries: 3,
         });
 
-  // AI Provider
-  const aiProvider = createAiProvider(config);
+  // AI Provider — created above (canonical factory) so boot observability
+  // reflects the resolved provider. The pipeline consumes this same instance.
 
   // Policy Engine
   const policyEngine = new PolicyEngine();

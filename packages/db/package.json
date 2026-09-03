@@ -24,7 +24,7 @@
     "@jules/config": "workspace:*",
     "@jules/core": "workspace:*",
     "@jules/shared": "workspace:*",
-    "drizzle-orm": "^0.39.3",
+    "drizzle-orm": "^0.45.2",
     "pg": "^8.13.3",
     "zod": "^4.5.4"
   },

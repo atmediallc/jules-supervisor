@@ -9,6 +9,7 @@ import {
   DecisionRepository,
   getDatabase,
   KillSwitch,
+  AiMemoryRepository,
   RepositoryKnowledgeRepository,
   SessionRepository,
   SyncCheckpointRepository,
@@ -20,6 +21,7 @@ import { PolicyEngine } from "@jules/policy";
 import { Redis } from "ioredis";
 import { InMemoryDistributedLock, RedisDistributedLock } from "./lock.js";
 import { MemoryContextService } from "./memory-context.js";
+import { SemanticMemoryService } from "./semantic-memory.js";
 import { SupervisionPipeline } from "./pipeline.js";
 import { SessionWatcher } from "./poller.js";
 import { BullMqSupervisorQueue, DirectSupervisorQueue } from "./queue.js";
@@ -118,6 +120,22 @@ async function main() {
     maxKnowledgeItems: config.MEMORY_KNOWLEDGE_MAX_ITEMS,
   });
 
+  // Semantic memory engine (learn/reuse/recall/inject/influence). Only active
+  // when AI_MEMORY_ENABLED; otherwise a null-safe no-op that degrades gracefully.
+  const semanticMemory =
+    config.AI_MEMORY_ENABLED && config.AI_MEMORY_RECALL_ENABLED
+      ? new SemanticMemoryService(new AiMemoryRepository(db), config)
+      : null;
+  if (semanticMemory) {
+    await semanticMemory.ensureIndex();
+    logger.info("Semantic memory engine enabled", {
+      recall: config.AI_MEMORY_RECALL_ENABLED,
+      reflection: config.AI_MEMORY_REFLECTION_ENABLED,
+      consolidation: config.AI_MEMORY_CONSOLIDATION_ENABLED,
+      collection: config.QDRANT_COLLECTION,
+    });
+  }
+
   // Pipeline
   const pipeline = new SupervisionPipeline({
     config,
@@ -132,8 +150,22 @@ async function main() {
     budgetRepo,
     lock,
     memoryService,
+    semanticMemory: semanticMemory ?? undefined,
     killSwitch,
   });
+
+  // Periodic semantic memory consolidation (expire / stale / reindex /
+  // promote / archive) — best-effort, interval from config.
+  let consolidationTimer: ReturnType<typeof setInterval> | null = null;
+  if (semanticMemory && config.AI_MEMORY_CONSOLIDATION_ENABLED) {
+    consolidationTimer = setInterval(() => {
+      semanticMemory.consolidateNow().catch(() => {
+        logger.warn("Periodic semantic memory consolidation pass failed");
+      });
+    }, config.MEMORY_CONSOLIDATION_INTERVAL_MS);
+    // Do not keep the process alive just for consolidation.
+    consolidationTimer.unref?.();
+  }
 
   // Log the initial runtime safety state so an operator immediately sees the
   // effective interlock state at boot (fail-closed: read errors → SAFETY_LOCKED).

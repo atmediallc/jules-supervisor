@@ -46,7 +46,9 @@ export class ContextBuilder {
 
   public build(input: DecisionPromptInput): BuiltContext {
     const hasMemory =
-      (input.historicalPrecedents?.length ?? 0) > 0 || (input.repositoryKnowledge?.length ?? 0) > 0;
+      (input.historicalPrecedents?.length ?? 0) > 0 ||
+      (input.repositoryKnowledge?.length ?? 0) > 0 ||
+      (input.recalledMemories?.length ?? 0) > 0;
     const systemPrompt = DEFAULT_SYSTEM_INSTRUCTIONS + (hasMemory ? MEMORY_ADVISORY_DIRECTIVE : "");
 
     let userPrompt = `<session_metadata>
@@ -114,15 +116,17 @@ Provide your evaluation in strict JSON conforming to:
   private buildMemorySection(input: DecisionPromptInput): string {
     const precedents = input.historicalPrecedents ?? [];
     const knowledge = input.repositoryKnowledge ?? [];
+    const recalled = input.recalledMemories ?? [];
 
-    if (precedents.length === 0 && knowledge.length === 0) {
+    if (precedents.length === 0 && knowledge.length === 0 && recalled.length === 0) {
       return "";
     }
 
     const knowledgeText = this.truncateKnowledgeByBudget(knowledge);
     const precedentText = this.truncatePrecedentsByBudget(precedents);
+    const recalledText = this.truncateRecalledByBudget(recalled);
 
-    if (knowledgeText === "" && precedentText === "") {
+    if (knowledgeText === "" && precedentText === "" && recalledText === "") {
       return "";
     }
 
@@ -133,8 +137,45 @@ Provide your evaluation in strict JSON conforming to:
     if (precedentText !== "") {
       parts.push(`<historical_precedent>\n${precedentText}\n</historical_precedent>`);
     }
+    if (recalledText !== "") {
+      parts.push(`<recalled_memory>\n${recalledText}\n</recalled_memory>`);
+    }
     parts.push("</untrusted_context>");
     return parts.join("\n");
+  }
+
+  /**
+   * Phase G: deterministic truncation of recalled semantic memories. Each item
+   * carries its type, trust, confidence, relevance score, and the provenance
+   * ("why selected") so the model — and auditors — can weigh it as evidence.
+   */
+  private truncateRecalledByBudget(
+    recalled: Array<{
+      memoryId: string;
+      memoryType: string;
+      title: string;
+      content: string;
+      confidence: number;
+      sourceTrust: string;
+      relevanceScore: number;
+      whySelected: string;
+    }>,
+  ): string {
+    const budgetChars = this.memoryBudgetTokens * 4;
+    let used = 0;
+    const lines: string[] = [];
+    for (const item of recalled) {
+      const safe = redactSensitiveData(item.content);
+      const header = `- [${item.memoryType}][trust=${item.sourceTrust}][conf=${item.confidence.toFixed(2)}][rel=${item.relevanceScore.toFixed(2)}] ${item.title.replace(/\n/g, " ")}`;
+      const why = item.whySelected ? ` (why: ${item.whySelected})` : "";
+      const line = `${header}${why}: ${safe}`;
+      if (used + line.length > budgetChars && lines.length > 0) {
+        break;
+      }
+      used += line.length;
+      lines.push(line);
+    }
+    return lines.join("\n");
   }
 
   /**

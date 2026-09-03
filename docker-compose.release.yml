@@ -30,6 +30,20 @@ services:
       timeout: 5s
       retries: 5
 
+  qdrant:
+    image: qdrant/qdrant:v1.19.0
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_HOST_PORT:-6333}:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   worker:
     image: ${JULES_WORKER_IMAGE:-jules-supervisor-worker:latest}
     restart: unless-stopped
@@ -37,6 +51,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      qdrant:
         condition: service_healthy
     environment:
       NODE_ENV: production
@@ -52,6 +68,17 @@ services:
       AI_API_KEY: ${AI_API_KEY:-mock-ai-key-placeholder}
       AI_MODEL: ${AI_MODEL:-gpt-4o}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Semantic memory (Qdrant + embeddings)
+      AI_MEMORY_ENABLED: ${AI_MEMORY_ENABLED:-true}
+      AI_MEMORY_RECALL_ENABLED: ${AI_MEMORY_RECALL_ENABLED:-true}
+      AI_MEMORY_REFLECTION_ENABLED: ${AI_MEMORY_REFLECTION_ENABLED:-true}
+      AI_MEMORY_CONSOLIDATION_ENABLED: ${AI_MEMORY_CONSOLIDATION_ENABLED:-true}
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-jules_memory_v1}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.openai.com/v1}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-${AI_API_KEY:-mock-ai-key-placeholder}}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
 
   web:
     image: ${JULES_WEB_IMAGE:-jules-supervisor-web:latest}
@@ -78,4 +105,6 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  qdrant_data:
     driver: local

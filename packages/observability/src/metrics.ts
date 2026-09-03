@@ -24,6 +24,20 @@ export interface MetricSnapshot {
   memoryRetrievalFailuresTotal: number;
   /** Correction loop: corrections dispatched to Jules. */
   correctionsSubmittedTotal: number;
+  /** Semantic memory engine metrics. */
+  embeddingLatencyMs: { count: number; avg: number; min: number; max: number };
+  embeddingFailuresTotal: number;
+  recallQueriesTotal: number;
+  recallDegradedTotal: number;
+  memoriesSelectedTotal: number;
+  memoryTokensInjectedTotal: number;
+  admissionAcceptedTotal: number;
+  admissionRejectedTotal: number;
+  duplicatesMergedTotal: number;
+  contradictionsDetectedTotal: number;
+  qdrantFailuresTotal: number;
+  consolidatedCount: number;
+  staleMemoryCount: number;
 }
 
 class MetricsRegistry {
@@ -49,6 +63,20 @@ class MetricsRegistry {
   private memoryRetrievalFailures = 0;
   // Correction loop
   private correctionsSubmitted = 0;
+  // Semantic memory engine metrics
+  private embeddingLatencies: number[] = [];
+  private embeddingFailures = 0;
+  private recallQueries = 0;
+  private recallDegraded = 0;
+  private memoriesSelected = 0;
+  private memoryTokensInjected = 0;
+  private admissionAccepted = 0;
+  private admissionRejected = 0;
+  private duplicatesMerged = 0;
+  private contradictionsDetected = 0;
+  private qdrantFailures = 0;
+  private consolidatedCount = 0;
+  private staleMemory = 0;
 
   public recordJulesLatency(ms: number): void {
     this.julesLatencies.push(ms);
@@ -141,6 +169,60 @@ class MetricsRegistry {
     this.correctionsSubmitted++;
   }
 
+  // Semantic memory engine metrics
+  public recordEmbeddingLatency(ms: number): void {
+    this.embeddingLatencies.push(ms);
+    if (this.embeddingLatencies.length > 500) this.embeddingLatencies.shift();
+  }
+
+  public incrementEmbeddingFailure(): void {
+    this.embeddingFailures++;
+  }
+
+  public incrementRecallQuery(): void {
+    this.recallQueries++;
+  }
+
+  public incrementRecallDegraded(reason?: string): void {
+    this.recallDegraded++;
+  }
+
+  public recordMemoriesSelected(count: number): void {
+    this.memoriesSelected += count;
+  }
+
+  public recordMemoryTokensInjected(tokens: number): void {
+    this.memoryTokensInjected += tokens;
+  }
+
+  public incrementAdmissionAccepted(): void {
+    this.admissionAccepted++;
+  }
+
+  public incrementAdmissionRejected(): void {
+    this.admissionRejected++;
+  }
+
+  public incrementDuplicateMerged(): void {
+    this.duplicatesMerged++;
+  }
+
+  public incrementContradictionDetected(): void {
+    this.contradictionsDetected++;
+  }
+
+  public incrementQdrantFailure(): void {
+    this.qdrantFailures++;
+  }
+
+  public recordConsolidated(count: number): void {
+    this.consolidatedCount += count;
+  }
+
+  public recordStaleMemory(count: number): void {
+    this.staleMemory += count;
+  }
+
   private summarize(data: number[]) {
     if (data.length === 0) return { count: 0, avg: 0, min: 0, max: 0 };
     const sum = data.reduce((a, b) => a + b, 0);
@@ -174,6 +256,19 @@ class MetricsRegistry {
       knowledgeItemsReturnedTotal: this.knowledgeItemsReturned,
       memoryRetrievalFailuresTotal: this.memoryRetrievalFailures,
       correctionsSubmittedTotal: this.correctionsSubmitted,
+      embeddingLatencyMs: this.summarize(this.embeddingLatencies),
+      embeddingFailuresTotal: this.embeddingFailures,
+      recallQueriesTotal: this.recallQueries,
+      recallDegradedTotal: this.recallDegraded,
+      memoriesSelectedTotal: this.memoriesSelected,
+      memoryTokensInjectedTotal: this.memoryTokensInjected,
+      admissionAcceptedTotal: this.admissionAccepted,
+      admissionRejectedTotal: this.admissionRejected,
+      duplicatesMergedTotal: this.duplicatesMerged,
+      contradictionsDetectedTotal: this.contradictionsDetected,
+      qdrantFailuresTotal: this.qdrantFailures,
+      consolidatedCount: this.consolidatedCount,
+      staleMemoryCount: this.staleMemory,
     };
   }
 

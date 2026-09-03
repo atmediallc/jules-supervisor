@@ -23,6 +23,8 @@ export interface DecisionPromptInput {
   historicalPrecedents?: HistoricalPrecedentDto[];
   /** P1: repository knowledge entries (advisory, untrusted). */
   repositoryKnowledge?: RepositoryKnowledgeDto[];
+  /** Semantic memory recalls (Phase G). Advisory, untrusted, with provenance. */
+  recalledMemories?: RecalledMemoryDto[];
 }
 
 /** P1: sanitized precedent DTO passed to the context builder. */
@@ -43,6 +45,19 @@ export interface RepositoryKnowledgeDto {
   knowledgeType: string;
   trustLevel: string;
   content: string;
+}
+
+/** Phase G: sanitized semantic memory recall passed to the context builder. */
+export interface RecalledMemoryDto {
+  memoryId: string;
+  memoryType: string;
+  title: string;
+  content: string;
+  confidence: number;
+  sourceTrust: string;
+  relevanceScore: number;
+  /** Short provenance string: why this memory was selected. */
+  whySelected: string;
 }
 
 export interface BuiltContext {

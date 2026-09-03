@@ -53,6 +53,53 @@ export const EnvSchema = z.object({
   MEMORY_KNOWLEDGE_MAX_ITEMS: z.coerce.number().min(0).max(100).default(20),
   MEMORY_ADVISORY_TOKEN_BUDGET: z.coerce.number().min(128).max(4096).default(1024),
 
+  // ── Semantic Memory (Qdrant + Embeddings) ──
+  AI_MEMORY_ENABLED: z
+    .string()
+    .transform((val) => val === "true" || val === "1")
+    .default("false"),
+  AI_MEMORY_RECALL_ENABLED: z
+    .string()
+    .transform((val) => val === "true" || val === "1")
+    .default("true"),
+  AI_MEMORY_REFLECTION_ENABLED: z
+    .string()
+    .transform((val) => val === "true" || val === "1")
+    .default("true"),
+  AI_MEMORY_CONSOLIDATION_ENABLED: z
+    .string()
+    .transform((val) => val === "true" || val === "1")
+    .default("true"),
+  // Qdrant vector database
+  QDRANT_URL: z.string().url().default("http://127.0.0.1:6333"),
+  QDRANT_API_KEY: z.string().default(""),
+  QDRANT_COLLECTION: z.string().default("jules_memory_v1"),
+  QDRANT_TIMEOUT_MS: z.coerce.number().min(1000).max(30000).default(5000),
+  QDRANT_MAX_RETRIES: z.coerce.number().min(0).max(10).default(3),
+  // Embeddings provider
+  EMBEDDING_PROVIDER: z.enum(["openai", "openai-compatible"]).default("openai"),
+  EMBEDDING_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
+  EMBEDDING_API_KEY: z.string().default(""),
+  EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
+  EMBEDDING_DIMENSIONS: z.coerce.number().min(64).max(4096).default(1536),
+  EMBEDDING_BATCH_SIZE: z.coerce.number().min(1).max(2048).default(100),
+  EMBEDDING_TIMEOUT_MS: z.coerce.number().min(1000).max(60000).default(30000),
+  // Semantic memory recall
+  MEMORY_RECALL_TOP_K: z.coerce.number().min(1).max(100).default(20),
+  MEMORY_RECALL_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).default(0.35),
+  MEMORY_RECALL_CANDIDATE_MULTIPLIER: z.coerce.number().min(1).max(10).default(3),
+  MEMORY_RECALL_TOKEN_BUDGET: z.coerce.number().min(128).max(16384).default(4096),
+  // Memory admission
+  MEMORY_ADMISSION_MIN_IMPORTANCE: z.coerce.number().min(0).max(1).default(0.3),
+  MEMORY_ADMISSION_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.4),
+  MEMORY_ADMISSION_MAX_LENGTH_CHARS: z.coerce.number().min(256).max(100_000).default(8_000),
+  MEMORY_ADMISSION_DEDUP_SIMILARITY: z.coerce.number().min(0.8).max(1).default(0.95),
+  // Memory decay & consolidation
+  MEMORY_CONSOLIDATION_INTERVAL_MS: z.coerce.number().min(60_000).max(86_400_000).default(3_600_000),
+  MEMORY_STALE_DAYS: z.coerce.number().min(1).max(365).default(90),
+  MEMORY_EXPIRY_DAYS_EPISODIC: z.coerce.number().min(1).max(365).default(30),
+  MEMORY_EXPIRY_DAYS_PROCEDURAL: z.coerce.number().min(7).max(730).default(180),
+
   // Google Jules API Configuration
   JULES_API_BASE_URL: z.string().url().default("https://jules.googleapis.com/v1alpha"),
   JULES_API_KEY: z.string().min(1).default("mock-jules-key-placeholder"),

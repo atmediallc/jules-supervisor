@@ -62,6 +62,55 @@ describe("ContextBuilder (P1 memory sections)", () => {
     expect(context.contextDigest).toHaveLength(64);
   });
 
+  it("renders recalled semantic memories with provenance inside the advisory block", () => {
+    const builder = new ContextBuilder();
+    const context = builder.build({
+      ...BASE_INPUT,
+      recalledMemories: [
+        {
+          memoryId: "mem_recall_1",
+          memoryType: "failure",
+          title: "Redis lock race",
+          content: "Never release the lock inside the same transaction as acquire.",
+          confidence: 0.85,
+          sourceTrust: "direct_observation",
+          relevanceScore: 0.91,
+          whySelected: "semantic=0.91 trust=direct_observation status=active",
+        },
+      ],
+    });
+
+    expect(context.userPrompt).toContain("<recalled_memory>");
+    expect(context.userPrompt).toContain("Redis lock race");
+    expect(context.userPrompt).toContain("direct_observation");
+    expect(context.userPrompt).toContain("why:");
+    // Recalled memory is inside the untrusted advisory block, not live context.
+    expect(context.userPrompt).toContain('memory="advisory"');
+    expect(context.systemPrompt).toContain("ADVISORY EVIDENCE ONLY");
+  });
+
+  it("redacts secrets inside recalled memory content", () => {
+    const builder = new ContextBuilder();
+    const context = builder.build({
+      ...BASE_INPUT,
+      recalledMemories: [
+        {
+          memoryId: "mem_secret",
+          memoryType: "procedural",
+          title: "Deploy command",
+          content: "Use sk-abcdefghijklmnopqrstuvwxyz1234567890 to deploy.",
+          confidence: 0.9,
+          sourceTrust: "human_approved",
+          relevanceScore: 0.8,
+          whySelected: "deploy",
+        },
+      ],
+    });
+
+    expect(context.userPrompt).not.toContain("sk-abcdefghijklmnopqrstuvwxyz1234567890");
+    expect(context.userPrompt).toContain("REDACTED");
+  });
+
   it("redacts secrets found inside memory content", () => {
     const builder = new ContextBuilder();
     const context = builder.build({

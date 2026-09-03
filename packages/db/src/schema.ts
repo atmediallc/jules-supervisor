@@ -259,3 +259,141 @@ export const sessionBudgets = pgTable(
   },
   (table) => [index("idx_session_budgets_session").on(table.sessionId)],
 );
+
+// ── Semantic AI Memory Engine (Phase B+) ─────────────────────────────────
+// Durable system-of-record for memory metadata. PostgreSQL holds canonical
+// identity, lifecycle, provenance, and audit; Qdrant holds vectors only.
+
+// AI memory canonical records — the durable system of record.
+export const aiMemories = pgTable(
+  "ai_memories",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    tenantId: varchar("tenant_id", { length: 128 }).notNull().default("default"),
+    projectId: varchar("project_id", { length: 128 }).notNull().default("default"),
+    repositoryId: varchar("repository_id", { length: 512 }).notNull(),
+    memoryType: varchar("memory_type", { length: 32 }).notNull(),
+    title: text("title").notNull(),
+    canonicalContent: text("canonical_content").notNull(),
+    summary: text("summary").notNull(),
+    tags: jsonb("tags").$type<string[]>().notNull().default([]),
+    importance: doublePrecision("importance").notNull().default(0.5),
+    confidence: doublePrecision("confidence").notNull().default(0.5),
+    sourceType: varchar("source_type", { length: 32 }).notNull(),
+    sourceTrust: varchar("source_trust", { length: 32 }).notNull().default("unverified"),
+    evidenceClass: varchar("evidence_class", { length: 32 }).notNull().default("inferred"),
+    sourceId: varchar("source_id", { length: 128 }),
+    executionId: varchar("execution_id", { length: 128 }),
+    taskId: varchar("task_id", { length: 128 }),
+    affectedPaths: jsonb("affected_paths").$type<string[]>().notNull().default([]),
+    branch: varchar("branch", { length: 256 }),
+    commitSha: varchar("commit_sha", { length: 64 }),
+    status: varchar("status", { length: 32 }).notNull().default("active"),
+    embeddingModel: varchar("embedding_model", { length: 128 }).notNull(),
+    embeddingDimensions: integer("embedding_dimensions").notNull(),
+    schemaVersion: integer("schema_version").notNull().default(3),
+    supersededBy: varchar("superseded_by", { length: 128 }),
+    fingerprint: varchar("fingerprint", { length: 320 }).notNull(),
+    accessCount: integer("access_count").notNull().default(0),
+    successfulUseCount: integer("successful_use_count").notNull().default(0),
+    negativeOutcomeCount: integer("negative_outcome_count").notNull().default(0),
+    lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }),
+    lastUsedExecutionId: varchar("last_used_execution_id", { length: 128 }),
+    lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
+    validFrom: timestamp("valid_from", { withTimezone: true }).notNull().defaultNow(),
+    validUntil: timestamp("valid_until", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_ai_memories_repo").on(table.repositoryId),
+    index("idx_ai_memories_type").on(table.memoryType),
+    index("idx_ai_memories_status").on(table.status),
+    index("idx_ai_memories_tenant_project").on(table.tenantId, table.projectId),
+    index("idx_ai_memories_fingerprint").on(table.fingerprint),
+    index("idx_ai_memories_updated").on(table.updatedAt),
+    index("idx_ai_memories_superseded_by").on(table.supersededBy),
+  ],
+);
+
+// Semantic vector records — linked to Qdrant point IDs for rebuild/reindex.
+export const aiMemoryEmbeddings = pgTable(
+  "ai_memory_embeddings",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    memoryId: varchar("memory_id", { length: 128 })
+      .notNull()
+      .references(() => aiMemories.id, { onDelete: "cascade" }),
+    tenantId: varchar("tenant_id", { length: 128 }).notNull().default("default"),
+    projectId: varchar("project_id", { length: 128 }).notNull().default("default"),
+    repositoryId: varchar("repository_id", { length: 512 }).notNull(),
+    qdrantPointId: varchar("qdrant_point_id", { length: 128 }),
+    embeddingModel: varchar("embedding_model", { length: 128 }).notNull(),
+    numDimensions: integer("num_dimensions").notNull(),
+    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("pending"),
+    indexedAt: timestamp("indexed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_ai_embeddings_memory").on(table.memoryId),
+    index("idx_ai_embeddings_repo").on(table.repositoryId),
+    uniqueIndex("uniq_ai_embeddings_memory_content").on(table.memoryId, table.contentHash),
+  ],
+);
+
+// Memory influence audit — WHY memory affected an AI execution.
+export const aiMemoryInfluences = pgTable(
+  "ai_memory_influences",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    executionId: varchar("execution_id", { length: 128 }).notNull(),
+    memoryId: varchar("memory_id", { length: 128 })
+      .notNull()
+      .references(() => aiMemories.id, { onDelete: "cascade" }),
+    tenantId: varchar("tenant_id", { length: 128 }).notNull().default("default"),
+    projectId: varchar("project_id", { length: 128 }).notNull().default("default"),
+    repositoryId: varchar("repository_id", { length: 512 }).notNull(),
+    retrievalScore: doublePrecision("retrieval_score").notNull(),
+    rank: integer("rank").notNull(),
+    reasonSelected: text("reason_selected").notNull(),
+    injectedIntoContext: boolean("injected_into_context").notNull().default(false),
+    tokenCost: integer("token_cost").notNull().default(0),
+    executionSucceeded: boolean("execution_succeeded"),
+    outcomeSignal: varchar("outcome_signal", { length: 64 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_ai_influences_execution").on(table.executionId),
+    index("idx_ai_influences_memory").on(table.memoryId),
+    index("idx_ai_influences_repo").on(table.repositoryId),
+  ],
+);
+
+// Memory relationships (supersedes, derives_from, causes, etc.)
+export const aiMemoryRelations = pgTable(
+  "ai_memory_relations",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    sourceMemoryId: varchar("source_memory_id", { length: 128 })
+      .notNull()
+      .references(() => aiMemories.id, { onDelete: "cascade" }),
+    targetMemoryId: varchar("target_memory_id", { length: 128 })
+      .notNull()
+      .references(() => aiMemories.id, { onDelete: "cascade" }),
+    relationType: varchar("relation_type", { length: 32 }).notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_ai_relations_source").on(table.sourceMemoryId),
+    index("idx_ai_relations_target").on(table.targetMemoryId),
+    uniqueIndex("uniq_ai_relations_pair").on(
+      table.sourceMemoryId,
+      table.targetMemoryId,
+      table.relationType,
+    ),
+  ],
+);

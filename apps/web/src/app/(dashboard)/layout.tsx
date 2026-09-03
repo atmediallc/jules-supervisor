@@ -10,6 +10,7 @@ import {
   TerminalSquare,
   Radio,
   CheckCircle2,
+  Brain,
 } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -61,6 +62,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <Cpu className="w-4 h-4 text-slate-400" />
               Decisions & AI Logs
+            </Link>
+            <Link
+              href="/memories"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
+            >
+              <Brain className="w-4 h-4 text-violet-400" />
+              Memory Control Center
             </Link>
             <Link
               href="/policies"

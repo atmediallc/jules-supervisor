@@ -1,4 +1,9 @@
-import { AiDecisionResponse, ContextBuilder, IAiDecisionProvider } from "@jules/ai";
+import {
+  AiDecisionResponse,
+  ContextBuilder,
+  IAiDecisionProvider,
+  RecalledMemoryDto,
+} from "@jules/ai";
 import { AppConfig } from "@jules/config";
 import {
   BudgetUsage,
@@ -30,6 +35,7 @@ import { generateId, sha256 } from "@jules/shared";
 import { safetyInterlockError } from "./errors.js";
 import { IDistributedLock } from "./lock.js";
 import type { MemoryContext, MemoryContextService } from "./memory-context.js";
+import type { SemanticMemoryService } from "./semantic-memory.js";
 
 export interface PipelineDependencies {
   config: AppConfig;
@@ -45,6 +51,8 @@ export interface PipelineDependencies {
   lock: IDistributedLock;
   /** P1: advisory memory retrieval (optional for backward compatibility). */
   memoryService?: MemoryContextService;
+  /** Semantic memory engine (learn/reuse/inject/influence). Advisory, degraded-safe. */
+  semanticMemory?: SemanticMemoryService;
   /** P1: runtime kill switch — authoritative, DB-backed, checked pre-AI and pre-mutation. */
   killSwitch?: KillSwitch;
   /** Worker is DEGRADED (e.g. queue infra unavailable): mutation-capable
@@ -80,6 +88,7 @@ export class SupervisionPipeline {
   private readonly contextBuilder: ContextBuilder;
   private readonly loopDetector: LoopDetector;
   private readonly memoryService: MemoryContextService | null;
+  private readonly semanticMemory: SemanticMemoryService | null;
   private readonly killSwitch: KillSwitch | null;
   /** True when the worker is running DEGRADED (infra unavailable). In this
    * state mutation-capable decisions escalate to human review. */
@@ -106,6 +115,7 @@ export class SupervisionPipeline {
     });
     this.loopDetector = new LoopDetector({ maxTotalSessionCycles: deps.config.MAX_SESSION_CYCLES });
     this.memoryService = deps.memoryService ?? null;
+    this.semanticMemory = deps.semanticMemory ?? null;
     this.killSwitch = deps.killSwitch ?? null;
     this.degradedMode = deps.degradedMode ?? false;
   }
@@ -206,6 +216,20 @@ export class SupervisionPipeline {
         ? await this.memoryService.retrieve(session.repository, session.id)
         : null;
 
+      // P1-semantic: recall relevant memories for this task (advisory, degraded-safe).
+      let recalledMemories: RecalledMemoryDto[] = [];
+      if (this.semanticMemory) {
+        recalledMemories = await this.semanticMemory.recall({
+          repositoryId: session.repository,
+          task:
+            session.prompt ||
+            activity.content ||
+            (activity.plan ? "evaluate plan" : "evaluate activity"),
+          executionId: activity.id,
+          affectedPaths: activity.patch?.filesChanged,
+        });
+      }
+
       const context = this.contextBuilder.build({
         sessionId: session.id,
         repository: session.repository,
@@ -226,6 +250,7 @@ export class SupervisionPipeline {
         })),
         historicalPrecedents: memoryContext?.historicalPrecedents ?? [],
         repositoryKnowledge: memoryContext?.repositoryKnowledge ?? [],
+        recalledMemories,
       });
 
       // 5. Autonomy Budget Gate (before any AI call)
@@ -453,6 +478,30 @@ export class SupervisionPipeline {
           executionState,
         },
       });
+
+      // P1-semantic: reflect over this execution and admit durable lessons
+      // (best-effort, non-blocking). Outcome is derived from the execution gate.
+      if (this.semanticMemory) {
+        const outcome =
+          gate.autoExecuted && !gate.requiresHumanReview && !gate.blocked
+            ? "success"
+            : gate.blocked
+              ? "failure"
+              : "partial";
+        await this.semanticMemory.reflectAndAdmit({
+          executionId: decisionId,
+          repositoryId: session.repository,
+          task:
+            session.prompt ||
+            activity.content ||
+            (activity.plan ? "evaluate plan" : "evaluate activity"),
+          affectedPaths: activity.patch?.filesChanged,
+          actions: recentActivities.slice(-4).map((a) => a.type),
+          result: proposedDecision.response ?? "",
+          outcome,
+          toolsUsed: ["jules-api", "supervisor-ai"],
+        });
+      }
 
       // 10. Handle Human Review Queue Creation
       if (gate.requiresHumanReview) {

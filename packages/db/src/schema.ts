@@ -260,6 +260,73 @@ export const sessionBudgets = pgTable(
   (table) => [index("idx_session_budgets_session").on(table.sessionId)],
 );
 
+// ── Durable Execution Attempts (H3: exactly-once-ish external effects) ──
+// Records every attempt to apply a decision's external effect (approvePlan /
+// sendMessage / REQUEST_CHANGES correction). Enables distributed reconciliation:
+// a worker that applied an effect may crash before recording success, leaving
+// the attempt stranded; the reconciler re-claims stale attempts and re-drives
+// with the SAME clientToken (the Jules API is idempotent by clientToken), so a
+// retry cannot double-apply. Ambiguous outcomes are marked UNKNOWN_EFFECT and
+// escalated to a human rather than guessed.
+export const executionAttempts = pgTable(
+  "execution_attempts",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    decisionId: varchar("decision_id", { length: 128 })
+      .notNull()
+      .references(() => decisions.id, { onDelete: "cascade" }),
+    attemptNumber: integer("attempt_number").notNull().default(1),
+    status: varchar("status", { length: 32 })
+      .notNull()
+      .default("PENDING") // PENDING|CLAIMED|EXECUTING|SUCCEEDED|FAILED|UNKNOWN_EFFECT|NEEDS_RECONCILIATION
+      .$type<ExecutionAttemptStatus>(),
+    claimOwner: varchar("claim_owner", { length: 128 }),
+    claimExpiry: timestamp("claim_expiry", { withTimezone: true }),
+    clientToken: varchar("client_token", { length: 256 }),
+    externalResult: text("external_result"),
+    errorCategory: varchar("error_category", { length: 32 }), // TRANSIENT|PERMANENT|AMBIGUOUS
+    errorMessage: text("error_message"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("uniq_execution_attempts_decision_number").on(
+      table.decisionId,
+      table.attemptNumber,
+    ),
+    index("idx_execution_attempts_decision").on(table.decisionId),
+    index("idx_execution_attempts_status").on(table.status),
+    index("idx_execution_attempts_claim_expiry").on(table.claimExpiry),
+  ],
+);
+
+export const ExecutionAttemptStatus = ["PENDING", "CLAIMED", "EXECUTING", "SUCCEEDED", "FAILED", "UNKNOWN_EFFECT", "NEEDS_RECONCILIATION"] as const;
+export type ExecutionAttemptStatus = (typeof ExecutionAttemptStatus)[number];
+
+// ── Durable Corrections (H5: correction-loop dedup survives restart) ─────
+// Persisted record of each correction instruction submitted to a session so the
+// correction ceiling and defect-dedup fingerprint set are durable across worker
+// restarts (previously held only in-memory in the pipeline).
+export const corrections = pgTable(
+  "corrections",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    sessionId: varchar("session_id", { length: 128 })
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    decisionId: varchar("decision_id", { length: 128 })
+      .references(() => decisions.id, { onDelete: "cascade" }),
+    fingerprint: varchar("fingerprint", { length: 320 }).notNull(),
+    instruction: text("instruction").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("uniq_corrections_session_fingerprint").on(table.sessionId, table.fingerprint),
+    index("idx_corrections_session").on(table.sessionId),
+  ],
+);
+
 // ── Semantic AI Memory Engine (Phase B+) ─────────────────────────────────
 // Durable system-of-record for memory metadata. PostgreSQL holds canonical
 // identity, lifecycle, provenance, and audit; Qdrant holds vectors only.

@@ -3,21 +3,49 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
-    alias: {
-      "@jules/shared": path.resolve(__dirname, "packages/shared/src/index.ts"),
-      "@jules/config": path.resolve(__dirname, "packages/config/src/index.ts"),
-      "@jules/core": path.resolve(__dirname, "packages/core/src/index.ts"),
-      "@jules/observability": path.resolve(__dirname, "packages/observability/src/index.ts"),
-      "@jules/db": path.resolve(__dirname, "packages/db/src/index.ts"),
-      "@jules/jules-client": path.resolve(__dirname, "packages/jules-client/src/index.ts"),
-      "@jules/ai": path.resolve(__dirname, "packages/ai/src/index.ts"),
-      "@jules/policy": path.resolve(__dirname, "packages/policy/src/index.ts"),
-      "@jules/test-utils": path.resolve(__dirname, "packages/test-utils/src/index.ts"),
-      ioredis: path.resolve(__dirname, "apps/worker/node_modules/ioredis"),
-      bullmq: path.resolve(__dirname, "apps/worker/node_modules/bullmq"),
-      pg: path.resolve(__dirname, "packages/db/node_modules/pg"),
-      "drizzle-orm": path.resolve(__dirname, "packages/db/node_modules/drizzle-orm"),
-    },
+    alias: [
+      { find: "@/", replacement: path.resolve(__dirname, "apps/web/src") + "/" },
+      {
+        find: "@jules/shared",
+        replacement: path.resolve(__dirname, "packages/shared/src/index.ts"),
+      },
+      {
+        find: "@jules/config",
+        replacement: path.resolve(__dirname, "packages/config/src/index.ts"),
+      },
+      {
+        find: "@jules/core",
+        replacement: path.resolve(__dirname, "packages/core/src/index.ts"),
+      },
+      {
+        find: "@jules/observability",
+        replacement: path.resolve(__dirname, "packages/observability/src/index.ts"),
+      },
+      { find: "@jules/db", replacement: path.resolve(__dirname, "packages/db/src/index.ts") },
+      {
+        find: "@jules/jules-client",
+        replacement: path.resolve(__dirname, "packages/jules-client/src/index.ts"),
+      },
+      { find: "@jules/ai", replacement: path.resolve(__dirname, "packages/ai/src/index.ts") },
+      {
+        find: "@jules/policy",
+        replacement: path.resolve(__dirname, "packages/policy/src/index.ts"),
+      },
+      {
+        find: "@jules/test-utils",
+        replacement: path.resolve(__dirname, "packages/test-utils/src/index.ts"),
+      },
+      {
+        find: "ioredis",
+        replacement: path.resolve(__dirname, "apps/worker/node_modules/ioredis"),
+      },
+      { find: "bullmq", replacement: path.resolve(__dirname, "apps/worker/node_modules/bullmq") },
+      { find: "pg", replacement: path.resolve(__dirname, "packages/db/node_modules/pg") },
+      {
+        find: "drizzle-orm",
+        replacement: path.resolve(__dirname, "packages/db/node_modules/drizzle-orm"),
+      },
+    ],
   },
   test: {
     globals: true,

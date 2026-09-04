@@ -1,9 +1,13 @@
 import { getConfig } from "@jules/config";
 import { getDatabase, SessionRepository, ActivityRepository } from "@jules/db";
+import { getTranslations, getLocale } from "next-intl/server";
+import { formatDateTime, formatNumber } from "@/lib/intl";
 
 export const dynamic = "force-dynamic";
 
 export default async function SessionsPage() {
+  const t = await getTranslations("sessions");
+  const locale = await getLocale();
   const config = getConfig();
   const db = getDatabase(config.DATABASE_URL);
   const sessionsRepo = new SessionRepository(db);
@@ -34,9 +38,9 @@ export default async function SessionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">Jules Sessions</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-white">{t("title")}</h2>
           <p className="text-sm text-slate-400 mt-1">
-            Supervised Google Jules sessions, state machine status, and activity traces.
+            {t("description")}
           </p>
         </div>
       </div>
@@ -69,15 +73,15 @@ export default async function SessionsPage() {
                 <p className="text-sm text-slate-200 font-medium mt-2">{session.prompt}</p>
               </div>
               <div className="text-right text-xs font-mono text-slate-400">
-                <div>Cycles: {session.cycleCount}</div>
-                <div>{new Date(session.createdAt).toLocaleString()}</div>
+                <div>{t("cycles")}: {formatNumber(locale, session.cycleCount)}</div>
+                <div>{formatDateTime(locale, session.createdAt)}</div>
               </div>
             </div>
 
             {/* Activities */}
             <div className="mt-4 pt-4 border-t border-slate-800/80">
               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                Recent Activities
+                {t("recent_activities")}
               </h4>
               <div className="space-y-2">
                 {session.activities.map((act) => (
@@ -92,12 +96,12 @@ export default async function SessionsPage() {
                       </p>
                     </div>
                     <span className="text-[10px] font-mono text-slate-500">
-                      {new Date(act.time).toLocaleString()}
+                      {formatDateTime(locale, act.time)}
                     </span>
                   </div>
                 ))}
                 {session.activities.length === 0 && (
-                  <p className="text-xs text-slate-500">No activities recorded yet.</p>
+                  <p className="text-xs text-slate-500">{t("no_activities")}</p>
                 )}
               </div>
             </div>
@@ -105,8 +109,7 @@ export default async function SessionsPage() {
         ))}
         {rows.length === 0 && (
           <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 text-sm text-slate-400">
-            No sessions recorded yet. The supervisor will create sessions as Jules activity is
-            observed.
+            {t("no_sessions")}
           </div>
         )}
       </div>

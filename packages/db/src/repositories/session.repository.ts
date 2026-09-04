@@ -23,21 +23,22 @@ export class SessionRepository {
   }
 
   public async upsert(data: SessionInsert): Promise<SessionSelect> {
-    const existing = await this.findById(data.id);
-    if (existing) {
-      const updated = await this.db
-        .update(sessions)
-        .set({
+    // Atomic upsert: insert-or-update in a single statement, removing the
+    // find-then-write TOCTOU race that could cause PK conflicts under
+    // concurrent workers. On conflict we overwrite the row with the payload
+    // (same net effect as the previous read-then-update path).
+    const rows = await this.db
+      .insert(sessions)
+      .values(data)
+      .onConflictDoUpdate({
+        target: sessions.id,
+        set: {
           ...data,
           updatedAt: new Date(),
-        })
-        .where(eq(sessions.id, data.id))
-        .returning();
-      return updated[0]!;
-    }
-
-    const inserted = await this.db.insert(sessions).values(data).returning();
-    return inserted[0]!;
+        },
+      })
+      .returning();
+    return rows[0]!;
   }
 
   public async updateState(

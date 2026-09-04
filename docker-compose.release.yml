@@ -62,12 +62,15 @@ services:
       DATABASE_URL: postgresql://${DB_USER:-jules_user}:${DB_PASSWORD:-jules_password}@postgres:5432/${DB_NAME:-jules_supervisor}?sslmode=disable
       REDIS_URL: redis://redis:6379
       JULES_API_BASE_URL: ${JULES_API_BASE_URL:-https://jules.googleapis.com/v1alpha}
-      JULES_API_KEY: ${JULES_API_KEY:-mock-jules-key-placeholder}
+      JULES_API_KEY: ${JULES_API_KEY:?JULES_API_KEY is required}
       AI_PROVIDER_TYPE: ${AI_PROVIDER_TYPE:-endpoint}
       AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
-      AI_API_KEY: ${AI_API_KEY:-mock-ai-key-placeholder}
+      AI_API_KEY: ${AI_API_KEY:?AI_API_KEY is required}
       AI_MODEL: ${AI_MODEL:-gpt-4o}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # RESET (REST) encryption key for system_settings secrets (AES-256-GCM). When
+      # unset, secrets are stored in plaintext — set it in production.
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?SETTINGS_ENCRYPTION_KEY is required}
       # Semantic memory (Qdrant + embeddings)
       AI_MEMORY_ENABLED: ${AI_MEMORY_ENABLED:-true}
       AI_MEMORY_RECALL_ENABLED: ${AI_MEMORY_RECALL_ENABLED:-true}
@@ -76,7 +79,7 @@ services:
       QDRANT_URL: http://qdrant:6333
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-jules_memory_v1}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.openai.com/v1}
-      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-${AI_API_KEY:-mock-ai-key-placeholder}}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:?EMBEDDING_API_KEY is required}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
 
@@ -100,6 +103,10 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
       AI_MODEL: ${AI_MODEL:-gpt-4o}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
+      AUTH_USERNAME: ${AUTH_USERNAME:?AUTH_USERNAME is required}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:?AUTH_PASSWORD is required}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
 
 volumes:
   postgres_data:

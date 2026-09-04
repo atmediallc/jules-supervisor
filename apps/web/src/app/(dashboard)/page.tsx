@@ -8,10 +8,15 @@ import {
   sql,
   SessionRepository,
 } from "@jules/db";
+import { getTranslations, getLocale } from "next-intl/server";
+import { formatNumber } from "@/lib/intl";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
+  const t = await getTranslations("overview");
+  const tCommon = await getTranslations("common");
+  const locale = await getLocale();
   const config = getConfig();
   const db = getDatabase(config.DATABASE_URL);
   const sessionsRepo = new SessionRepository(db);
@@ -59,9 +64,9 @@ export default async function DashboardPage() {
       {/* Top Banner */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">System Overview</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-white">{t("title")}</h2>
           <p className="text-sm text-slate-400 mt-1">
-            Real-time telemetry and supervision control plane for Google Jules coding sessions.
+            {t("description")}
           </p>
         </div>
         <div className="flex gap-3">
@@ -70,14 +75,14 @@ export default async function DashboardPage() {
             className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-colors"
           >
             <AlertTriangle className="w-4 h-4" />
-            {stats.pendingHumanReviews} PENDING APPROVALS
+            {t("pending_approvals", { count: String(stats.pendingHumanReviews) })}
           </Link>
           <Link
             href="/sessions"
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-colors"
           >
             <Activity className="w-4 h-4" />
-            VIEW SESSIONS
+            {t("view_sessions")}
           </Link>
         </div>
       </div>
@@ -86,45 +91,44 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
-            <span>Active Jules Sessions</span>
+            <span>{t("active_jules_sessions")}</span>
             <Activity className="w-4 h-4 text-indigo-400" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">{stats.activeSessions}</div>
+          <div className="text-3xl font-bold text-white font-mono">{formatNumber(locale, stats.activeSessions)}</div>
           <div className="text-xs text-slate-400">
-            <span className="text-amber-400 font-medium">{stats.awaitingFeedback}</span> awaiting
-            feedback
+            <span className="text-amber-400 font-medium">{formatNumber(locale, stats.awaitingFeedback)}</span> {t("awaiting_feedback", { count: String(stats.awaitingFeedback) })}
           </div>
         </div>
 
         <div className="p-5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
-            <span>Pending Approvals</span>
+            <span>{t("pending_approvals_card")}</span>
             <CheckCircle2 className="w-4 h-4 text-amber-400" />
           </div>
           <div className="text-3xl font-bold text-amber-400 font-mono">
-            {stats.pendingHumanReviews}
+            {formatNumber(locale, stats.pendingHumanReviews)}
           </div>
-          <div className="text-xs text-slate-400">Requires human sign-off</div>
+          <div className="text-xs text-slate-400">{t("requires_human_signoff")}</div>
         </div>
 
         <div className="p-5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
-            <span>Decisions Today</span>
+            <span>{t("decisions_today")}</span>
             <Cpu className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">{stats.decisionsToday}</div>
+          <div className="text-3xl font-bold text-white font-mono">{formatNumber(locale, stats.decisionsToday)}</div>
           <div className="text-xs text-slate-400">
-            <span className="text-emerald-400 font-medium">{stats.autoExecuted}</span> auto-executed
+            <span className="text-emerald-400 font-medium">{formatNumber(locale, stats.autoExecuted)}</span> {t("auto_executed", { count: String(stats.autoExecuted) })}
           </div>
         </div>
 
         <div className="p-5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
-            <span>Avg Decision Latency</span>
+            <span>{t("avg_decision_latency")}</span>
             <Clock className="w-4 h-4 text-sky-400" />
           </div>
           <div className="text-3xl font-bold text-white font-mono">{stats.avgLatencyMs}ms</div>
-          <div className="text-xs text-slate-400">Including context & AI inference</div>
+          <div className="text-xs text-slate-400">{t("including_context_inference")}</div>
         </div>
       </div>
 
@@ -133,8 +137,8 @@ export default async function DashboardPage() {
         {/* Active Sessions List */}
         <div className="lg:col-span-2 p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-white">Active Jules Sessions</h3>
-            <span className="text-xs text-slate-400 font-mono">Live</span>
+            <h3 className="text-base font-semibold text-white">{t("active_sessions_list")}</h3>
+            <span className="text-xs text-slate-400 font-mono">{tCommon("live")}</span>
           </div>
 
           <div className="space-y-3">
@@ -169,34 +173,34 @@ export default async function DashboardPage() {
                       href="/sessions"
                       className="text-xs text-indigo-400 hover:text-indigo-300 font-medium px-3 py-1.5 rounded bg-slate-900 border border-slate-800"
                     >
-                      Inspect
+                      {tCommon("inspect")}
                     </Link>
                   </div>
                 );
               })}
             {allSessions.filter((s) => !["COMPLETED", "CANCELLED", "FAILED"].includes(s.state))
               .length === 0 && (
-              <p className="text-xs text-slate-500">No active sessions.</p>
+              <p className="text-xs text-slate-500">{tCommon("no_sessions_active")}</p>
             )}
           </div>
         </div>
 
         {/* Security & Risk Distribution */}
         <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-4">
-          <h3 className="text-base font-semibold text-white">Policy & Risk Status</h3>
+          <h3 className="text-base font-semibold text-white">{t("policy_risk_status")}</h3>
 
           <div className="space-y-3 font-mono text-xs" id="risk-dist">
-            <RiskStat label="LOW RISK (Safe)" risk="low" db={db} />
-            <RiskStat label="MEDIUM RISK (Review)" risk="medium" db={db} />
-            <RiskStat label="HIGH RISK (Escalated)" risk="high" db={db} />
-            <RiskStat label="CRITICAL (Vetoed)" risk="critical" db={db} />
+            <RiskStat label={t("low_risk_safe")} risk="low" db={db} />
+            <RiskStat label={t("medium_risk_review")} risk="medium" db={db} />
+            <RiskStat label={t("high_risk_escalated")} risk="high" db={db} />
+            <RiskStat label={t("critical_vetoed")} risk="critical" db={db} />
           </div>
 
           <div className="pt-2 border-t border-slate-800 text-xs text-slate-400">
             <p>
-              Safety Gate Mode: <span className="text-amber-400 font-mono font-bold">DRY_RUN</span>
+              {t("safety_gate_mode")}: <span className="text-amber-400 font-mono font-bold">{tCommon("dry_run")}</span>
             </p>
-            <p className="mt-1">All mutations safely suppressed by default.</p>
+            <p className="mt-1">{t("mutations_suppressed")}</p>
           </div>
         </div>
       </div>

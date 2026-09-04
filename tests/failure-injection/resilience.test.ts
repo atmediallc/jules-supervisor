@@ -32,6 +32,7 @@ describe("Failure Injection & Resilience Tests", () => {
       aiProvider,
       policyEngine,
       ...createMockRepositories(store),
+      workerId: "test-worker",
       lock,
     });
 
@@ -61,6 +62,7 @@ describe("Failure Injection & Resilience Tests", () => {
       aiProvider,
       policyEngine,
       ...createMockRepositories(store),
+      workerId: "test-worker",
       lock,
     });
 

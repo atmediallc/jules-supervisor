@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 import { z } from "zod";
 import { getConfig } from "@jules/config";
-import { getDatabase, SystemSettingsRepository } from "@jules/db";
+import { AuditRepository, getDatabase, SystemSettingsRepository } from "@jules/db";
+import { generateId } from "@jules/shared";
 import { logRouteError } from "../route-logger";
 
 /**
@@ -11,6 +13,9 @@ import { logRouteError } from "../route-logger";
  *
  * Settings in the DB override environment variables at runtime.
  * Secrets (API keys, passwords) are encrypted at rest and masked in GET responses.
+ *
+ * AUTHZ: privileged route — requires a valid session token (defence-in-depth
+ * beyond middleware). Mutations are recorded in the audit trail.
  */
 
 // ── Settings seed catalog: defines what keys exist, their defaults, categories, and secret flag ──
@@ -336,8 +341,13 @@ function buildSettingItem(
 }
 
 /** GET /api/settings — List all settings with secrets masked */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const token = await getToken({ req });
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const config = getConfig();
     const db = getDatabase(config.DATABASE_URL);
     const repo = new SystemSettingsRepository(db);
@@ -363,6 +373,12 @@ export async function GET() {
 /** PUT /api/settings — Bulk update settings */
 export async function PUT(req: NextRequest) {
   try {
+    const token = await getToken({ req });
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const actor = (token?.name as string | undefined) ?? "authenticated-operator";
+
     const body = await req.json();
     const parsed = BulkUpdateSchema.safeParse(body);
 
@@ -391,6 +407,26 @@ export async function PUT(req: NextRequest) {
         description: u.description,
       })),
     );
+
+    // Audit the privileged mutation: which settings changed and by whom.
+    // Secret values are never written into the audit record.
+    try {
+      const auditRepo = new AuditRepository(db);
+      await auditRepo.record({
+        id: generateId("audit"),
+        actor,
+        actorType: "HUMAN",
+        action: "SETTINGS_UPDATE",
+        targetType: "system_settings",
+        targetId: "bulk",
+        afterState: {
+          keys: validation.updates.map((u) => u.key),
+        },
+        metadata: { count: validation.updates.length },
+      });
+    } catch (auditErr: unknown) {
+      logRouteError("PUT /api/settings audit", auditErr);
+    }
 
     // Clear the cached config so new values take effect on next getConfig() call
     try {

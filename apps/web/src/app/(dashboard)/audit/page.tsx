@@ -1,9 +1,14 @@
 import { getConfig } from "@jules/config";
 import { getDatabase, AuditRepository } from "@jules/db";
+import { getTranslations, getLocale } from "next-intl/server";
+import { formatDateTime } from "@/lib/intl";
 
 export const dynamic = "force-dynamic";
 
 export default async function AuditPage() {
+  const t = await getTranslations("audit");
+  const tCommon = await getTranslations("common");
+  const locale = await getLocale();
   const config = getConfig();
   const db = getDatabase(config.DATABASE_URL);
   const repo = new AuditRepository(db);
@@ -22,10 +27,9 @@ export default async function AuditPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-white">Audit Trail</h2>
+        <h2 className="text-2xl font-bold tracking-tight text-white">{t("title")}</h2>
         <p className="text-sm text-slate-400 mt-1">
-          Immutable log of all supervisor operations, AI evaluations, policy checks, and human
-          approvals.
+          {t("description")}
         </p>
       </div>
 
@@ -40,15 +44,15 @@ export default async function AuditPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-indigo-400 font-bold">{log.id}</span>
                   <span className="text-slate-200">[{log.action}]</span>
-                  <span className="text-slate-400">Target: {log.targetId}</span>
+                  <span className="text-slate-400">{tCommon("target")}: {log.targetId}</span>
                   <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">
-                    Actor: {log.actor} ({log.actorType})
+                    {tCommon("actor")}: {log.actor} ({log.actorType})
                   </span>
                 </div>
                 <p className="text-slate-300 text-[11px]">{log.details}</p>
               </div>
               <span className="text-[10px] text-slate-500">
-                    {new Date(log.timestamp).toLocaleString()}
+                    {formatDateTime(locale, log.timestamp)}
                   </span>
             </div>
           ))}

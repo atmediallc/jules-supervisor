@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import {
   Sliders,
   Save,
@@ -41,17 +42,14 @@ const CATEGORY_META: Record<
   infrastructure: { label: "Infrastructure", icon: Server, color: "text-rose-400" },
 };
 
-const SOURCE_BADGE: Record<string, { label: string; className: string }> = {
+const SOURCE_BADGE: Record<string, { className: string }> = {
   database: {
-    label: "DB Override",
     className: "bg-emerald-950 text-emerald-300 border-emerald-800",
   },
   environment: {
-    label: "ENV",
     className: "bg-sky-950 text-sky-300 border-sky-800",
   },
   default: {
-    label: "Default",
     className: "bg-slate-800 text-slate-400 border-slate-700",
   },
 };
@@ -76,6 +74,8 @@ async function loadModelsFromApi(): Promise<string[]> {
 const MODEL_LISTABLE_TYPES = new Set(["endpoint", "omniroute", "openai", "openai-compatible", "generic"]);
 
 export default function SettingsPage() {
+  const t = useTranslations("settings");
+  const tCommon = useTranslations("common");
   const [settings, setSettings] = useState<SettingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -92,7 +92,7 @@ export default function SettingsPage() {
       const data = await loadSettingsFromApi();
       setSettings(data);
     } catch {
-      setMessage({ type: "error", text: "Failed to load settings" });
+      setMessage({ type: "error", text: t("failed_to_load") });
     } finally {
       setLoading(false);
     }
@@ -149,16 +149,16 @@ export default function SettingsPage() {
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error ?? "Update failed");
+        throw new Error(err.error ?? t("failed_to_save"));
       }
 
-      setMessage({ type: "success", text: `${changedCount} setting(s) updated successfully` });
+      setMessage({ type: "success", text: t("settings_updated", { count: String(changedCount) }) });
       setEdits({});
       await fetchSettings();
     } catch (err: unknown) {
       setMessage({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to save settings",
+        text: err instanceof Error ? err.message : t("failed_to_save"),
       });
     } finally {
       setSaving(false);
@@ -196,10 +196,10 @@ export default function SettingsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-white">
-            System Settings & Configuration
+            {t("title")}
           </h2>
           <p className="text-sm text-slate-400 mt-1">
-            Manage API credentials, AI endpoints, and runtime parameters from the admin panel.
+            {t("description")}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -209,7 +209,7 @@ export default function SettingsPage() {
             className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            Refresh
+            {tCommon("refresh")}
           </button>
           <button
             onClick={handleSave}
@@ -217,7 +217,7 @@ export default function SettingsPage() {
             className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Save className="w-3.5 h-3.5" />
-            {saving ? "Saving…" : `Save Changes${changedCount > 0 ? ` (${changedCount})` : ""}`}
+            {saving ? t("saving") : `${t("save_changes")}${changedCount > 0 ? ` (${changedCount})` : ""}`}
           </button>
         </div>
       </div>
@@ -244,7 +244,7 @@ export default function SettingsPage() {
       {loading && settings.length === 0 ? (
         <div className="p-12 text-center bg-slate-900/40 rounded-xl border border-slate-800">
           <RefreshCw className="w-6 h-6 text-slate-500 mx-auto animate-spin" />
-          <p className="text-sm text-slate-400 mt-3">Loading settings…</p>
+          <p className="text-sm text-slate-400 mt-3">{t("loading_settings")}</p>
         </div>
       ) : (
         /* Settings by Category */
@@ -266,9 +266,9 @@ export default function SettingsPage() {
               >
                 <div className="flex items-center gap-3">
                   <Icon className={`w-5 h-5 ${meta.color}`} />
-                  <span className="text-sm font-bold text-white">{meta.label}</span>
+                  <span className="text-sm font-bold text-white">{t(`categories.${cat}`)}</span>
                   <span className="text-[10px] text-slate-500 font-mono">
-                    {items.length} setting{items.length !== 1 && "s"}
+                    {tCommon("setting_count", { count: items.length })}
                   </span>
                 </div>
                 {collapsed ? (
@@ -301,17 +301,17 @@ export default function SettingsPage() {
                             </span>
                             {item.isSecret && (
                               <span className="text-[9px] px-1.5 py-0.5 bg-rose-950 text-rose-300 border border-rose-800 rounded font-mono">
-                                SECRET
+                                {t("secret_label")}
                               </span>
                             )}
                             <span
                               className={`text-[9px] px-1.5 py-0.5 border rounded font-mono ${badge?.className ?? "bg-slate-800 text-slate-400 border-slate-700"}`}
                             >
-                              {badge?.label ?? "Unknown"}
+                              {badge ? t(`sources.${item.source}`) : t("unknown_source")}
                             </span>
                             {isEditing && (
                               <span className="text-[9px] px-1.5 py-0.5 bg-indigo-950 text-indigo-300 border border-indigo-800 rounded font-mono">
-                                MODIFIED
+                                {t("modified_label")}
                               </span>
                             )}
                           </div>
@@ -331,7 +331,7 @@ export default function SettingsPage() {
                               <button
                                 onClick={() => toggleSecretReveal(item.key)}
                                 className="p-1.5 text-slate-500 hover:text-slate-300 transition-colors"
-                                title="Reveal secret"
+                                title={t("reveal_secret")}
                               >
                                 <Eye className="w-3.5 h-3.5" />
                               </button>
@@ -346,12 +346,12 @@ export default function SettingsPage() {
                                   setEdits((prev) => ({ ...prev, [item.key]: e.target.value }))
                                 }
                                 className="font-mono text-xs text-indigo-300 bg-slate-950 px-3 py-1.5 rounded-lg border border-indigo-800 min-w-50 focus:outline-none focus:border-indigo-500"
-                                placeholder="Enter API key…"
+                                placeholder={t("enter_api_key")}
                               />
                               <button
                                 onClick={() => toggleSecretReveal(item.key)}
                                 className="p-1.5 text-slate-500 hover:text-slate-300 transition-colors"
-                                title="Hide secret"
+                                title={t("hide_secret")}
                               >
                                 <EyeOff className="w-3.5 h-3.5" />
                               </button>
@@ -400,7 +400,7 @@ export default function SettingsPage() {
                                   setEdits((prev) => ({ ...prev, [item.key]: e.target.value }))
                                 }
                                 className="font-mono text-xs text-indigo-300 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 min-w-45 focus:outline-none focus:border-indigo-500"
-                                placeholder={modelsLoading ? "Loading models…" : "Type to search model"}
+                                placeholder={modelsLoading ? t("loading_models") : t("search_model")}
                               />
                               {!modelsLoading && availableModels.length > 0 && (
                                 <datalist id="available-models">

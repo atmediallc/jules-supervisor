@@ -106,6 +106,16 @@ export const EnvSchema = z.object({
   JULES_API_TIMEOUT_MS: z.coerce.number().min(1000).max(60000).default(15000),
   JULES_RATE_LIMIT_RPS: z.coerce.number().min(1).max(100).default(5),
 
+  // Durable execution reconciliation (H3). Lease on an execution attempt; a
+  // worker that holds an attempt past its lease is presumed dead and the
+  // attempt is recoverable by another worker (re-driven with the same
+  // clientToken — the API is idempotent by token, so no double-apply).
+  EXECUTION_ATTEMPT_LEASE_MS: z.coerce.number().min(5_000).max(3_600_000).default(120_000),
+  // Maximum total attempts per decision before escalation to a human.
+  EXECUTION_MAX_ATTEMPTS: z.coerce.number().min(1).max(10).default(3),
+  // How often the reconciler scans for stale in-flight attempts.
+  EXECUTION_RECONCILE_INTERVAL_MS: z.coerce.number().min(10_000).max(3_600_000).default(60_000),
+
   // AI Provider & OmniRoute Configuration
   AI_PROVIDER_TYPE: z
     .enum(["openai", "openai-compatible", "omniroute", "generic", "endpoint", "mock"])
@@ -190,9 +200,22 @@ export const EnvSchema = z.object({
     .string()
     .transform((val) => val === "true" || val === "1")
     .default("false"),
+  // Phase 3: when true and REDIS_ENABLED, a worker that cannot acquire a REAL
+  // distributed lock refuses to start (fail-closed) rather than falling back to
+  // an in-memory per-process lock (which breaks mutual exclusion across
+  // workers). When false (default), the worker starts in DEGRADED lock mode:
+  // it still polls/observes but escalates every mutation to a human until a
+  // real lock is available.
+  LOCK_REQUIRE_REDIS: z
+    .string()
+    .transform((val) => val === "true" || val === "1")
+    .default("false"),
 
   // Security & Web
   SESSION_SECRET: z.string().min(16).default("session-secret-at-least-32-chars-length-12345"),
+  // Key used to encrypt secrets at rest in system_settings (isSecret rows).
+  // AES-256-GCM. If absent, secrets are stored in plaintext (backward compat).
+  SETTINGS_ENCRYPTION_KEY: z.string().min(0).default(""),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
 
   // Filesystem & Portability

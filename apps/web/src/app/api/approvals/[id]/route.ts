@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { getToken } from "next-auth/jwt";
 import { getConfig } from "@jules/config";
 import {
   ApprovalRepository,
@@ -14,7 +15,10 @@ import { logRouteError } from "../../route-logger";
 
 const ApprovalActionBodySchema = z.object({
   status: z.enum(["APPROVED", "REJECTED", "EDITED", "CANCELLED"]),
-  reviewer: z.string().default("human-operator"),
+  // Backward compatible: caller may still send a reviewer, but the authoritative
+  // actor is ALWAYS resolved from the session token (defence-in-depth against
+  // audit-trail spoofing). A client-supplied reviewer is never trusted.
+  reviewer: z.string().optional(),
   modifiedResponse: z.string().optional(),
   comment: z.string().optional(),
 });
@@ -45,6 +49,14 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   const { id } = await context.params;
 
   try {
+    // Resolve the authoritative actor from the session token. A client-supplied
+    // reviewer is never trusted for audit attribution or state transitions.
+    const token = await getToken({ req });
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const reviewer = (token?.name as string | undefined) ?? "authenticated-operator";
+
     const body = await req.json();
     const parsed = ApprovalActionBodySchema.safeParse(body);
 
@@ -75,7 +87,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       const updated = await approvalRepo.updateStatus(
         id,
         parsed.data.status,
-        parsed.data.reviewer,
+        reviewer,
         parsed.data.modifiedResponse,
         parsed.data.comment,
       );
@@ -124,7 +136,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
             await auditRepo.record({
               id: `aud_fb_${randomUUID()}`,
-              actor: parsed.data.reviewer,
+              actor: reviewer,
               actorType: "HUMAN",
               action: `HUMAN_FEEDBACK_${humanAction}`,
               targetType: "decision",
@@ -145,7 +157,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
             try {
               await auditRepo.record({
                 id: `aud_fberr_${randomUUID()}`,
-                actor: parsed.data.reviewer,
+                actor: reviewer,
                 actorType: "HUMAN",
                 action: "HUMAN_FEEDBACK_PERSISTENCE_FAILED",
                 targetType: "decision",
@@ -174,7 +186,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
         success: true,
         approvalId: id,
         status: updated?.status ?? parsed.data.status,
-        reviewer: parsed.data.reviewer,
+        reviewer,
         timestamp: new Date().toISOString(),
       });
     } catch {

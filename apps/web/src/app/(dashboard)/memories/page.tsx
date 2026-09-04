@@ -9,6 +9,8 @@ import {
   RefreshCw,
   Ban,
 } from "lucide-react";
+import { getTranslations, getLocale } from "next-intl/server";
+import { formatNumber } from "@/lib/intl";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +48,9 @@ export default async function MemoriesPage({
 }: {
   searchParams: Promise<{ repositoryId?: string; memoryType?: string; status?: string }>;
 }) {
+  const t = await getTranslations("memory");
+  const tCommon = await getTranslations("common");
+  const locale = await getLocale();
   const params = await searchParams;
   const config = getConfig();
   const db = getDatabase(config.DATABASE_URL);
@@ -80,11 +85,10 @@ export default async function MemoriesPage({
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-white">
-            Memory Control Center
+            {t("control_title")}
           </h2>
           <p className="text-sm text-slate-400 mt-1">
-            Durable semantic memory store. Operator can inspect, validate, archive, or supersede
-            memories that inform future Jules executions.
+            {t("control_description")}
           </p>
         </div>
         <form action={async () => {
@@ -95,23 +99,23 @@ export default async function MemoriesPage({
             type="submit"
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 text-sm font-medium border border-slate-700"
           >
-            <RefreshCw className="w-4 h-4" /> Refresh
+            <RefreshCw className="w-4 h-4" /> {tCommon("refresh")}
           </button>
         </form>
       </div>
 
       <div className="grid grid-cols-4 gap-4">
-        <StatCard label="Total Shown" value={String(memories.length)} />
+        <StatCard label={t("total_shown")} value={String(memories.length)} />
         <StatCard
-          label="Active"
+          label={t("active")}
           value={String(memories.filter((m) => m.status === "active").length)}
         />
         <StatCard
-          label="Stale"
+          label={t("stale")}
           value={String(memories.filter((m) => m.status === "stale").length)}
         />
         <StatCard
-          label="Total Accesses"
+          label={t("total_accesses")}
           value={String(memories.reduce((a, m) => a + m.accessCount, 0))}
         />
       </div>
@@ -119,9 +123,9 @@ export default async function MemoriesPage({
       <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-3">
         <div className="text-xs text-slate-400 font-mono">
           {memories.length === 0 ? (
-            "No memories found for this repository."
+            tCommon("no_memories_found")
           ) : (
-            `${memories.length} memories`
+            tCommon("memories_count", { count: String(memories.length) })
           )}
         </div>
         <div className="space-y-2">
@@ -142,14 +146,14 @@ export default async function MemoriesPage({
                   <p className="text-slate-400 text-xs line-clamp-2">{m.summary}</p>
                   <div className="text-[10px] text-slate-500 font-mono">
                     conf={m.confidence.toFixed(2)} importance={m.importance.toFixed(2)}
-                    {" · "}access={m.accessCount} ✓={m.successfulUseCount} ✗={m.negativeOutcomeCount}
+                    {" · "}access={formatNumber(locale, m.accessCount)} ✓={formatNumber(locale, m.successfulUseCount)} ✗={formatNumber(locale, m.negativeOutcomeCount)}
                   </div>
                 </div>
               </Link>
               {m.status === "active" && (
                 <div className="flex items-center gap-2">
-                  <MemoryAction id={m.id} action="validate" label="Validate" icon={<CheckCircle2 className="w-4 h-4" />} />
-                  <MemoryAction id={m.id} action="archive" label="Archive" icon={<Archive className="w-4 h-4" />} />
+                  <MemoryAction id={m.id} action="validate" label={t("validate")} icon={<CheckCircle2 className="w-4 h-4" />} />
+                  <MemoryAction id={m.id} action="archive" label={t("archive")} icon={<Archive className="w-4 h-4" />} />
                 </div>
               )}
             </div>

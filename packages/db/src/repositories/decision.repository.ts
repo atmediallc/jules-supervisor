@@ -40,8 +40,23 @@ export class DecisionRepository {
   }
 
   public async create(data: DecisionInsert): Promise<DecisionSelect> {
-    const inserted = await this.db.insert(decisions).values(data).returning();
-    return inserted[0]!;
+    // Idempotent insert: the DB unique index on idempotencyKey is the backstop.
+    // On a concurrent duplicate (or redelivery), the insert is a no-op and the
+    // existing row is returned — turning the constraint from a thrown race into
+    // a graceful idempotent skip.
+    const inserted = await this.db
+      .insert(decisions)
+      .values(data)
+      .onConflictDoNothing({ target: decisions.idempotencyKey })
+      .returning();
+    if (inserted[0]) return inserted[0];
+    const existing = await this.findByIdempotencyKey(data.idempotencyKey);
+    if (!existing) {
+      throw new Error(
+        `Decision insert conflicted but no existing row found for idempotency key: ${data.idempotencyKey}`,
+      );
+    }
+    return existing;
   }
 
   public async markExecuted(

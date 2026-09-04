@@ -32,6 +32,7 @@ describe("Milestone 1 — DRY_RUN Full Vertical Slice E2E", () => {
       aiProvider,
       policyEngine,
       ...createMockRepositories(store),
+      workerId: "test-worker",
       lock,
     });
 

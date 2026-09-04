@@ -3,6 +3,7 @@
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   ShieldCheck,
   User,
@@ -32,21 +33,24 @@ function BrandMark() {
 }
 
 /** Capability nodes in the supervision pipeline (descriptive, not live state). */
-const PIPELINE_NODES = [
-  { icon: Terminal, label: "Jules Session", sub: "Autonomous session" },
-  { icon: ScrollText, label: "Policy Engine", sub: "Rules & guardrails" },
-  { icon: BrainCircuit, label: "AI Decision", sub: "Evaluation & risk" },
-  { icon: CheckCircle2, label: "Human Approval", sub: "Oversight gate" },
-  { icon: Play, label: "Execution", sub: "Controlled run" },
-];
+function getPipelineNodes(t: ReturnType<typeof useTranslations>) {
+  return [
+    { icon: Terminal, label: t("pipeline.jules_session"), sub: t("pipeline.jules_session_sub") },
+    { icon: ScrollText, label: t("pipeline.policy_engine"), sub: t("pipeline.policy_engine_sub") },
+    { icon: BrainCircuit, label: t("pipeline.ai_decision"), sub: t("pipeline.ai_decision_sub") },
+    { icon: CheckCircle2, label: t("pipeline.human_approval"), sub: t("pipeline.human_approval_sub") },
+    { icon: Play, label: t("pipeline.execution"), sub: t("pipeline.execution_sub") },
+  ];
+}
 
-function SupervisionPipeline() {
+function SupervisionPipeline({ t }: { t: ReturnType<typeof useTranslations> }) {
+  const nodes = getPipelineNodes(t);
   return (
     <div className="relative">
       <ol className="relative space-y-0">
-        {PIPELINE_NODES.map(({ icon: Icon, label, sub }, i) => (
+        {nodes.map(({ icon: Icon, label, sub }, i) => (
           <li key={label} className="relative flex items-start gap-4">
-            {i < PIPELINE_NODES.length - 1 && (
+            {i < nodes.length - 1 && (
               <span
                 aria-hidden
                 className="absolute left-[13px] top-10 bottom-[-8px] w-px bg-gradient-to-b from-indigo-500/40 via-slate-600/30 to-transparent"
@@ -72,12 +76,14 @@ function PasswordField({
   onChange,
   invalid,
   describedBy,
+  t,
 }: {
   id: string;
   value: string;
   onChange: (v: string) => void;
   invalid: boolean;
   describedBy?: string;
+  t: (key: string) => string;
 }) {
   const [visible, setVisible] = useState(false);
   return (
@@ -106,7 +112,7 @@ function PasswordField({
       <button
         type="button"
         onClick={() => setVisible((v) => !v)}
-        aria-label={visible ? "Hide password" : "Show password"}
+        aria-label={visible ? t("hide_password") : t("show_password")}
         aria-pressed={visible}
         className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 transition-colors hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60"
       >
@@ -126,6 +132,7 @@ export default function LoginPage() {
   const passwordId = useId();
   const errorId = useId();
   const submitLock = useRef(false);
+  const t = useTranslations("login");
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -148,14 +155,14 @@ export default function LoginPage() {
         redirect: false,
       });
       if (result?.error) {
-        setError("Unable to sign in with those credentials. Please try again.");
+        setError(t("error_invalid_credentials"));
         setStatus("idle");
         setTouched(true);
       } else {
         router.replace("/");
       }
     } catch {
-      setError("Jules Supervisor is temporarily unreachable. Please try again.");
+      setError(t("error_unreachable"));
       setStatus("idle");
     } finally {
       submitLock.current = false;
@@ -180,25 +187,24 @@ export default function LoginPage() {
             <BrandMark />
             <div>
               <p className="text-[15px] font-semibold tracking-[0.14em] text-white">
-                JULES SUPERVISOR
+                {t("brand")}
               </p>
               <p className="mt-0.5 text-[11px] font-mono tracking-wide text-slate-500">
-                CONTROL PLANE
+                {t("subtitle")}
               </p>
             </div>
           </div>
 
           <div className="mt-16 max-w-md xl:mt-24">
             <h1 className="text-3xl font-semibold leading-tight text-white xl:text-[2.1rem] xl:leading-[1.2]">
-              Autonomous oversight.
+              {t("hero_title")}
               <br />
               <span className="bg-gradient-to-r from-indigo-300 via-violet-200 to-cyan-200 bg-clip-text text-transparent">
-                Human control.
+                {t("hero_highlight")}
               </span>
             </h1>
             <p className="mt-5 text-[15px] leading-relaxed text-slate-400">
-              Supervise autonomous Jules sessions, AI decisions, approvals, policies, and
-              execution from one secure control plane.
+              {t("hero_description")}
             </p>
           </div>
         </div>
@@ -207,14 +213,14 @@ export default function LoginPage() {
         <div className="relative mx-10 mb-12 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-6 backdrop-blur-sm xl:mx-14 xl:p-7">
           <div className="mb-5 flex items-center justify-between">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-              Supervision pipeline
+              {t("pipeline_title")}
             </p>
             <span className="flex items-center gap-1.5 rounded-full border border-slate-700/70 bg-slate-900/80 px-2 py-0.5 font-mono text-[10px] text-slate-500">
               <Activity className="h-3 w-3 text-indigo-400/80 motion-safe:animate-pulse" strokeWidth={1.8} />
-              POLICY-GATED
+              {t("pipeline_badge")}
             </span>
           </div>
-          <SupervisionPipeline />
+          <SupervisionPipeline t={t} />
         </div>
       </aside>
 
@@ -225,15 +231,15 @@ export default function LoginPage() {
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <BrandMark />
             <div>
-              <p className="text-sm font-semibold tracking-[0.14em] text-white">JULES SUPERVISOR</p>
-              <p className="text-[11px] font-mono text-slate-500">CONTROL PLANE</p>
+              <p className="text-sm font-semibold tracking-[0.14em] text-white">{t("brand")}</p>
+              <p className="text-[11px] font-mono text-slate-500">{t("subtitle")}</p>
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-800/80 bg-slate-900/50 p-8 shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_24px_60px_-24px_rgba(0,0,0,0.7)] backdrop-blur-sm sm:p-9">
-            <h2 className="text-xl font-semibold text-white">Welcome back</h2>
+            <h2 className="text-xl font-semibold text-white">{t("welcome_back")}</h2>
             <p className="mt-1.5 text-sm text-slate-400">
-              Sign in to continue to the supervisor control plane.
+              {t("welcome_description")}
             </p>
 
             <form onSubmit={handleSubmit} noValidate aria-busy={submitting} className="mt-7 space-y-5">
@@ -242,7 +248,7 @@ export default function LoginPage() {
                   htmlFor={usernameId}
                   className="mb-1.5 block text-xs font-medium text-slate-300"
                 >
-                  Username
+                  {t("username_label")}
                 </label>
                 <div className="relative">
                   <User
@@ -274,7 +280,7 @@ export default function LoginPage() {
                   htmlFor={passwordId}
                   className="mb-1.5 block text-xs font-medium text-slate-300"
                 >
-                  Password
+                  {t("password_label")}
                 </label>
                 <PasswordField
                   id={passwordId}
@@ -282,6 +288,7 @@ export default function LoginPage() {
                   onChange={setPassword}
                   invalid={touched && !!error}
                   describedBy={error ? errorId : undefined}
+                  t={t}
                 />
               </div>
 
@@ -304,11 +311,11 @@ export default function LoginPage() {
                 {submitting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
-                    <span>Signing in…</span>
+                    <span>{t("signing_in")}</span>
                   </>
                 ) : (
                   <>
-                    <span>Sign in</span>
+                    <span>{t("sign_in")}</span>
                     <ArrowRight
                       className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
                       strokeWidth={2}
@@ -321,7 +328,7 @@ export default function LoginPage() {
 
             <p className="mt-7 flex items-center justify-center gap-2 border-t border-slate-800/70 pt-5 text-center text-xs text-slate-500">
               <ShieldCheck className="h-3.5 w-3.5 text-slate-600" strokeWidth={1.8} aria-hidden />
-              Protected access to the Jules Supervisor control plane.
+              {t("footer_text")}
             </p>
           </div>
         </div>

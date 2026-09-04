@@ -31,6 +31,7 @@ describe("Concurrency & Race Condition Defenses", () => {
       aiProvider,
       policyEngine,
       ...createMockRepositories(store),
+      workerId: "test-worker",
       lock,
     });
 

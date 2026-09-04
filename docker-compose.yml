@@ -91,6 +91,9 @@ services:
       AI_API_KEY: ${AI_API_KEY:-mock-ai-key-placeholder}
       AI_MODEL: ${AI_MODEL:-gpt-4o}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # AES-256-GCM key for encrypting secrets in system_settings. Leave unset
+      # for local dev (plaintext) — set a strong value in production.
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
       HEALTH_PORT: 8080
       READY_PORT: 8081
       # Semantic memory (Qdrant + embeddings)

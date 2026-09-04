@@ -23,7 +23,9 @@ import {
   ApprovalRepository,
   AuditRepository,
   BudgetRepository,
+  CorrectionRepository,
   DecisionRepository,
+  ExecutionAttemptRepository,
   KillSwitch,
   safetyActionForState,
   SessionRepository,
@@ -32,7 +34,7 @@ import { IJulesClient, JulesActivity, JulesSession } from "@jules/jules-client";
 import { logger, metrics } from "@jules/observability";
 import { PolicyEngine } from "@jules/policy";
 import { generateId, sha256 } from "@jules/shared";
-import { safetyInterlockError } from "./errors.js";
+import { classifyExecutionEffect, safetyInterlockError } from "./errors.js";
 import { IDistributedLock } from "./lock.js";
 import type { MemoryContext, MemoryContextService } from "./memory-context.js";
 import type { SemanticMemoryService } from "./semantic-memory.js";
@@ -49,6 +51,14 @@ export interface PipelineDependencies {
   auditRepo: AuditRepository;
   budgetRepo: BudgetRepository;
   lock: IDistributedLock;
+  /** H3: durable execution-attempt ledger. Required — the worker must record
+   * every external mutation so a crash mid-effect can be reconciled safely. */
+  executionAttemptRepo: ExecutionAttemptRepository;
+  /** H5: durable correction-loop ledger. Required — the correction ceiling and
+   * defect dedup set must survive restarts. */
+  correctionRepo: CorrectionRepository;
+  /** Stable identity for claiming execution attempts (e.g. host:pid). */
+  workerId: string;
   /** P1: advisory memory retrieval (optional for backward compatibility). */
   memoryService?: MemoryContextService;
   /** Semantic memory engine (learn/reuse/inject/influence). Advisory, degraded-safe. */
@@ -84,6 +94,9 @@ export class SupervisionPipeline {
   private readonly approvalRepo: ApprovalRepository;
   private readonly auditRepo: AuditRepository;
   private readonly budgetRepo: BudgetRepository;
+  private readonly executionAttemptRepo: ExecutionAttemptRepository;
+  private readonly correctionRepo: CorrectionRepository;
+  private readonly workerId: string;
   private readonly lock: IDistributedLock;
   private readonly contextBuilder: ContextBuilder;
   private readonly loopDetector: LoopDetector;
@@ -107,6 +120,9 @@ export class SupervisionPipeline {
     this.approvalRepo = deps.approvalRepo;
     this.auditRepo = deps.auditRepo;
     this.budgetRepo = deps.budgetRepo;
+    this.executionAttemptRepo = deps.executionAttemptRepo;
+    this.correctionRepo = deps.correctionRepo;
+    this.workerId = deps.workerId;
     this.lock = deps.lock;
     this.contextBuilder = new ContextBuilder({
       maxBudgetTokens: deps.config.AI_MAX_TOKENS * 2,
@@ -527,10 +543,30 @@ export class SupervisionPipeline {
 
       // 11. Handle Auto-Execution (If allowed by gate)
       if (gate.autoExecuted && proposedDecision.response) {
+        // H3: durable execution attempt. Insert + claim the attempt BEFORE any
+        // external mutation so a crash mid-effect leaves a recoverable record.
+        // The SAME idempotencyKey (clientToken) is reused on every retry of this
+        // attempt; the Jules API is idempotent by clientToken, so a reconciler
+        // re-driving with the same token cannot double-apply the effect.
+        let attemptId: string | null = null;
         try {
+          const priorAttempts = await this.executionAttemptRepo.listByDecision(decisionId);
+          const attemptNumber = priorAttempts.length + 1;
+          attemptId = generateId("exec");
+          await this.executionAttemptRepo.create({
+            id: attemptId,
+            decisionId,
+            attemptNumber,
+            clientToken: idempotencyKey,
+          });
+          await this.executionAttemptRepo.claimPending(attemptId, this.workerId, this.config.EXECUTION_ATTEMPT_LEASE_MS);
+          await this.executionAttemptRepo.markExecuting(attemptId, this.workerId);
+
           log.info("Auto-executing decision against Google Jules API...", {
             decisionId,
             action: proposedDecision.action,
+            attemptId,
+            attemptNumber,
           });
 
           // 11a. **Pre-mutation kill switch gate (REQUIRED)**: re-check the
@@ -577,7 +613,14 @@ export class SupervisionPipeline {
             // same-correction loop); the correction budget ceiling is enforced
             // by the pre-AI budget gate.
             const correctionInstruction = proposedDecision.response ?? "";
-            const fingerprints = this.fingerprintsFor(session.id);
+            const fingerprint = fingerprintDefect(correctionInstruction);
+            const durableFingerprints = await this.correctionRepo.fingerprintsForSession(
+              session.id,
+            );
+            const fingerprints = new Set<string>(durableFingerprints);
+            for (const f of this.sessionCorrectionFingerprints.get(session.id) ?? []) {
+              fingerprints.add(f);
+            }
             const check = canSubmitCorrection({
               correctionCount: fingerprints.size,
               maxCorrections: this.config.BUDGET_MAX_CORRECTIONS_PER_SESSION,
@@ -596,26 +639,34 @@ export class SupervisionPipeline {
               message: correctionInstruction,
               clientToken: idempotencyKey,
             });
-            fingerprints.add(fingerprintDefect(correctionInstruction));
-            // Persist the correction against the durable session budget so the
-            // correction ceiling survives worker restarts (correction loop
-            // termination is not merely in-memory).
-            await this.budgetRepo
-              .incrementCorrections(session.id)
-              .catch((err: unknown) => {
-                log.warn("Could not persist correction count to budget", {
-                  sessionId: session.id,
-                  err: (err as Error).message,
-                });
-              });
+            // Persist the correction against the DURABLE ledger (H5) so the
+            // correction ceiling and dedup set survive worker restarts and are
+            // shared across workers.
+            await this.correctionRepo.record({
+              id: generateId("corr"),
+              sessionId: session.id,
+              decisionId,
+              fingerprint,
+              instruction: correctionInstruction,
+            });
+            // Mirror the correction into the per-session budget counter that the
+            // pre-AI budget gate reads for the ceiling, so the persisted budget
+            // reflects each dispatched correction.
+            await this.budgetRepo.incrementCorrections(session.id);
+            this.addFingerprint(session.id, fingerprint);
             metrics.incrementCorrectionSubmitted();
           }
 
+          // H3: the external effect resolved definitively — the attempt SUCCEEDED.
+          await this.executionAttemptRepo.markSucceeded(attemptId);
           await this.decisionRepo.markExecuted(decisionId, "EXECUTED");
           await this.sessionRepo.updateState(session.id, "IN_PROGRESS", "AUTO_EXECUTED");
           metrics.incrementAutoExecution();
 
-          log.info("Decision successfully executed against Jules API", { decisionId });
+          log.info("Decision successfully executed against Jules API", {
+            decisionId,
+            attemptId,
+          });
           return {
             decisionId,
             action: proposedDecision.action,
@@ -624,12 +675,30 @@ export class SupervisionPipeline {
             requiresHumanReview: false,
           };
         } catch (err: unknown) {
-          log.error("Failed to execute decision against Jules API", err, { decisionId });
-          await this.decisionRepo.markExecuted(
-            decisionId,
-            "EXECUTION_FAILED",
-            (err as Error).message,
+          // H3: classify the failure so the durable ledger knows whether the
+          // effect MAY have been applied (AMBIGUOUS), definitely was not but a
+          // retry is safe (TRANSIENT), or must not be retried (PERMANENT).
+          const classification = classifyExecutionEffect(err);
+          const message = (err as Error).message ?? String(err);
+          log.error(
+            `Failed to execute decision against Jules API (${classification.category})`,
+            err,
+            { decisionId, attemptId },
           );
+          if (attemptId) {
+            if (classification.category === "PERMANENT") {
+              await this.executionAttemptRepo.markFailed(attemptId, "PERMANENT", message);
+            } else if (classification.category === "TRANSIENT") {
+              await this.executionAttemptRepo.markFailed(attemptId, "TRANSIENT", message);
+            } else {
+              await this.executionAttemptRepo.markUnknownEffect(
+                attemptId,
+                "AMBIGUOUS",
+                message,
+              );
+            }
+          }
+          await this.decisionRepo.markExecuted(decisionId, "EXECUTION_FAILED", message);
           throw err;
         }
       }
@@ -656,13 +725,15 @@ export class SupervisionPipeline {
     );
   }
 
-  /** Lazy per-session set of defect fingerprints (correction-loop dedup). */
-  private fingerprintsFor(sessionId: string): Set<string> {
+  /** Record a defect fingerprint for a session in the in-memory dedup cache.
+   * The durable source of truth is the corrections ledger (H5); this in-memory
+   * copy is a fast-path only and is rehydrated from the ledger on each check. */
+  private addFingerprint(sessionId: string, fingerprint: string): void {
     let set = this.sessionCorrectionFingerprints.get(sessionId);
     if (!set) {
       set = new Set();
       this.sessionCorrectionFingerprints.set(sessionId, set);
     }
-    return set;
+    set.add(fingerprint);
   }
 }

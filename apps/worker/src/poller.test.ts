@@ -66,6 +66,7 @@ function setupWatcher(mode: "DRY_RUN" | "ASSISTED" | "AUTO_RESPOND" | "FULL_AUTO
     aiProvider,
     policyEngine,
     ...repos,
+    workerId: "test-worker",
     lock,
   });
 

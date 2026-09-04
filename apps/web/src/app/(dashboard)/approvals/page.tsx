@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { CheckCircle2, XCircle, Edit3 } from "lucide-react";
+import { useI18n } from "@/i18n/provider";
+import { formatDateTime } from "@/lib/intl";
 
 interface ApprovalItem {
   id: string;
@@ -15,6 +18,8 @@ interface ApprovalItem {
 }
 
 export default function ApprovalsPage() {
+  const t = useTranslations("approvals");
+  const { locale } = useI18n();
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
 
   useEffect(() => {
@@ -22,12 +27,7 @@ export default function ApprovalsPage() {
       .then((res) => (res.ok ? res.json() : { approvals: [] }))
       .then((data) => {
         const list = (data.approvals ?? []) as ApprovalItem[];
-        setApprovals(
-          list.map((a) => ({
-            ...a,
-            createdAt: new Date(a.createdAt).toLocaleString(),
-          })),
-        );
+        setApprovals(list);
       })
       .catch(() => setApprovals([]));
   }, []);
@@ -54,7 +54,7 @@ export default function ApprovalsPage() {
       }).catch(() => {});
 
       setApprovals((prev) => prev.filter((item) => item.id !== id));
-      setActionMessage(`Request [${id}] marked as ${action} successfully.`);
+      setActionMessage(t("action_success", { id, action }));
       setTimeout(() => setActionMessage(null), 4000);
     } finally {
       setSubmittingId(null);
@@ -66,13 +66,13 @@ export default function ApprovalsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">Human Approval Queue</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-white">{t("title")}</h2>
           <p className="text-sm text-slate-400 mt-1">
-            Review, modify, or reject AI-recommended actions for high-risk or assisted operations.
+            {t("description")}
           </p>
         </div>
         <span className="px-3 py-1 bg-amber-950 text-amber-300 border border-amber-800 text-xs font-mono rounded">
-          {approvals.length} Pending Actions
+          {t("pending_actions", { count: String(approvals.length) })}
         </span>
       </div>
 
@@ -85,8 +85,8 @@ export default function ApprovalsPage() {
       {approvals.length === 0 ? (
         <div className="p-12 text-center bg-slate-900/40 rounded-xl border border-slate-800 space-y-2">
           <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-          <h3 className="text-base font-semibold text-white">Approval Queue is Empty</h3>
-          <p className="text-xs text-slate-400">All pending Jules requests have been reviewed.</p>
+          <h3 className="text-base font-semibold text-white">{t("queue_empty")}</h3>
+          <p className="text-xs text-slate-400">{t("queue_empty_description")}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -100,7 +100,7 @@ export default function ApprovalsPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-bold text-amber-400">{item.id}</span>
                     <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-200">
-                      Session: {item.sessionId}
+                      {t("session")}: {item.sessionId}
                     </span>
                     <span
                       className={`text-xs font-mono px-2 py-0.5 rounded border ${
@@ -111,23 +111,23 @@ export default function ApprovalsPage() {
                             : "bg-amber-950 text-amber-300 border-amber-800"
                       }`}
                     >
-                      {item.risk.toUpperCase()} RISK
+                      {item.risk.toUpperCase()} {t("risk")}
                     </span>
                     <span className="text-xs font-mono px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
-                      Action: {item.action}
+                      {t("action")}: {item.action}
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 font-mono mt-1">
-                    Confidence: {(item.confidence * 100).toFixed(0)}% — {item.reason}
+                    {t("confidence")}: {(item.confidence * 100).toFixed(0)}% — {item.reason}
                   </p>
                 </div>
-                <span className="text-[10px] font-mono text-slate-500">{item.createdAt}</span>
+                <span className="text-[10px] font-mono text-slate-500">{formatDateTime(locale, item.createdAt)}</span>
               </div>
 
               {/* Proposed Response Box */}
               <div className="p-4 bg-slate-950 rounded-lg border border-slate-800">
                 <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>Proposed Response to Jules</span>
+                  <span>{t("proposed_response")}</span>
                   {editingId !== item.id && (
                     <button
                       onClick={() => {
@@ -136,7 +136,7 @@ export default function ApprovalsPage() {
                       }}
                       className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300"
                     >
-                      <Edit3 className="w-3 h-3" /> Edit Response
+                      <Edit3 className="w-3 h-3" /> {t("edit_response")}
                     </button>
                   )}
                 </div>
@@ -153,14 +153,14 @@ export default function ApprovalsPage() {
                         onClick={() => setEditingId(null)}
                         className="px-3 py-1 text-xs text-slate-400 hover:text-white"
                       >
-                        Cancel
+                        {t("cancel")}
                       </button>
                       <button
                         onClick={() => handleAction(item.id, "EDITED")}
                         disabled={submittingId === item.id}
                         className="px-3 py-1 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded font-medium"
                       >
-                        Save & Send Edited Response
+                        {t("save_send_edited")}
                       </button>
                     </div>
                   </div>
@@ -180,7 +180,7 @@ export default function ApprovalsPage() {
                     className="flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800 text-xs font-semibold tracking-wide disabled:opacity-50 transition-colors"
                   >
                     <XCircle className="w-4 h-4" />
-                    REJECT ACTION
+                    {t("reject_action")}
                   </button>
 
                   <button
@@ -189,7 +189,7 @@ export default function ApprovalsPage() {
                     className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold tracking-wide disabled:opacity-50 transition-colors"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    APPROVE & DISPATCH
+                    {t("approve_dispatch")}
                   </button>
                 </div>
               )}

@@ -77,6 +77,7 @@ function setup(mode: "DRY_RUN" | "ASSISTED" | "AUTO_RESPOND" | "FULL_AUTO", kill
     aiProvider,
     policyEngine,
     ...createMockRepositories(store),
+    workerId: "test-worker",
     lock,
     killSwitch: killSwitch as never,
   });
@@ -155,6 +156,7 @@ describe("Kill switch — PRE-AI gate", () => {
       aiProvider,
       policyEngine: new PolicyEngine(),
       ...createMockRepositories(store),
+      workerId: "test-worker",
       lock: new InMemoryDistributedLock(),
       killSwitch: fakeKillSwitch("SAFETY_LOCKED", "security incident"),
     });

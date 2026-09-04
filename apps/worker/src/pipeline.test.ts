@@ -35,6 +35,7 @@ function setupTestPipeline(
     aiProvider,
     policyEngine,
     ...createMockRepositories(store),
+    workerId: "test-worker",
     lock,
   });
 
@@ -74,6 +75,7 @@ function setupTestPipelineWithMemory(
     aiProvider,
     policyEngine,
     ...createMockRepositories(store),
+    workerId: "test-worker",
     lock,
     memoryService,
   });
@@ -231,6 +233,7 @@ describe("SupervisionPipeline", () => {
       aiProvider,
       policyEngine,
       ...createMockRepositories(store),
+      workerId: "test-worker",
       lock,
     });
 

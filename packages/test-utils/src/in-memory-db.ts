@@ -9,9 +9,11 @@ import {
   AuditEventSelect,
   AuditRepository,
   BudgetRepository,
+  CorrectionRepository,
   DecisionInsert,
   DecisionSelect,
   DecisionRepository,
+  ExecutionAttemptRepository,
   SessionBudgetSelect,
   SessionInsert,
   SessionSelect,
@@ -29,6 +31,27 @@ export class InMemoryRepositoryStore {
   public sessionBudgets = new Map<string, SessionBudgetSelect>();
   /** Reconciliation cursors, keyed by sessionId. */
   public checkpoints = new Map<string, { sessionId: string; lastActivityId: string | null; nextPageToken: string | null; lastSyncedAt: Date }>();
+  /** H3: execution-attempt ledger. */
+  public executionAttempts = new Map<
+    string,
+    {
+      id: string;
+      decisionId: string;
+      attemptNumber: number;
+      status: string;
+      claimOwner: string | null;
+      claimExpiry: Date | null;
+      clientToken: string | null;
+      externalResult: string | null;
+      errorCategory: string | null;
+      errorMessage: string | null;
+      startedAt: Date | null;
+      completedAt: Date | null;
+      createdAt: Date;
+    }
+  >();
+  /** H5: durable correction ledger, keyed by sessionId:set of fingerprints. */
+  public corrections = new Map<string, { fingerprint: string; decisionId: string | null; instruction: string; createdAt: Date }[]>();
 
   public clear(): void {
     this.sessions.clear();
@@ -38,6 +61,8 @@ export class InMemoryRepositoryStore {
     this.auditEvents = [];
     this.sessionBudgets.clear();
     this.checkpoints.clear();
+    this.executionAttempts.clear();
+    this.corrections.clear();
   }
 
   // Sessions
@@ -417,6 +442,8 @@ export function createMockRepositories(store: InMemoryRepositoryStore): {
   auditRepo: AuditRepository;
   budgetRepo: BudgetRepository;
   checkpointRepo: SyncCheckpointRepository;
+  executionAttemptRepo: ExecutionAttemptRepository;
+  correctionRepo: CorrectionRepository;
 } {
   return {
     sessionRepo: {
@@ -539,5 +566,140 @@ export function createMockRepositories(store: InMemoryRepositoryStore): {
         store.checkpoints.delete(sessionId);
       },
     } as unknown as SyncCheckpointRepository,
+    executionAttemptRepo: {
+      create: async (input: { id: string; decisionId: string; attemptNumber: number; clientToken?: string | null }) => {
+        const row = {
+          id: input.id,
+          decisionId: input.decisionId,
+          attemptNumber: input.attemptNumber,
+          status: "PENDING" as const,
+          claimOwner: null,
+          claimExpiry: null,
+          clientToken: input.clientToken ?? null,
+          externalResult: null,
+          errorCategory: null,
+          errorMessage: null,
+          startedAt: null,
+          completedAt: null,
+          createdAt: new Date(),
+        };
+        store.executionAttempts.set(input.id, row);
+        return row;
+      },
+      claimPending: async (id: string, owner: string, leaseMs: number) => {
+        const row = store.executionAttempts.get(id);
+        if (!row || row.status !== "PENDING") return null;
+        const now = new Date();
+        row.status = "CLAIMED";
+        row.claimOwner = owner;
+        row.claimExpiry = new Date(now.getTime() + leaseMs);
+        row.startedAt = now;
+        store.executionAttempts.set(id, row);
+        return row;
+      },
+      recoverStale: async (id: string, owner: string, leaseMs: number) => {
+        const row = store.executionAttempts.get(id);
+        const expiredBefore = new Date(Date.now() - leaseMs);
+        if (!row || !row.claimExpiry || row.claimExpiry >= expiredBefore) return null;
+        const now = new Date();
+        row.status = "CLAIMED";
+        row.claimOwner = owner;
+        row.claimExpiry = new Date(now.getTime() + leaseMs);
+        row.startedAt = now;
+        row.errorCategory = null;
+        row.errorMessage = null;
+        store.executionAttempts.set(id, row);
+        return row;
+      },
+      markExecuting: async (id: string, owner: string) => {
+        const row = store.executionAttempts.get(id);
+        if (!row || row.claimOwner !== owner) return null;
+        row.status = "EXECUTING";
+        store.executionAttempts.set(id, row);
+        return row;
+      },
+      markSucceeded: async (id: string, externalResult?: string | null) => {
+        const row = store.executionAttempts.get(id);
+        if (!row) return;
+        row.status = "SUCCEEDED";
+        row.completedAt = new Date();
+        row.externalResult = externalResult ?? null;
+        row.errorCategory = null;
+        row.errorMessage = null;
+        store.executionAttempts.set(id, row);
+      },
+      markFailed: async (id: string, category: "TRANSIENT" | "PERMANENT", message?: string | null) => {
+        const row = store.executionAttempts.get(id);
+        if (!row) return;
+        row.status = "FAILED";
+        row.completedAt = new Date();
+        row.errorCategory = category;
+        row.errorMessage = message ?? null;
+        store.executionAttempts.set(id, row);
+      },
+      markUnknownEffect: async (id: string, category: "AMBIGUOUS", message?: string | null) => {
+        const row = store.executionAttempts.get(id);
+        if (!row) return;
+        row.status = "UNKNOWN_EFFECT";
+        row.completedAt = new Date();
+        row.errorCategory = category;
+        row.errorMessage = message ?? null;
+        store.executionAttempts.set(id, row);
+      },
+      markNeedsReconciliation: async (id: string, message?: string | null) => {
+        const row = store.executionAttempts.get(id);
+        if (!row) return;
+        row.status = "NEEDS_RECONCILIATION";
+        row.errorMessage = message ?? null;
+        store.executionAttempts.set(id, row);
+      },
+      listInFlight: async () =>
+        Array.from(store.executionAttempts.values()).filter((a) => a.status === "EXECUTING"),
+      findStaleAttempts: async (leaseMs: number, statuses: string[] = ["CLAIMED", "EXECUTING"]) => {
+        const threshold = new Date(Date.now() - leaseMs);
+        return Array.from(store.executionAttempts.values()).filter(
+          (a) => a.claimExpiry !== null && a.claimExpiry < threshold && statuses.includes(a.status),
+        );
+      },
+      listByDecision: async (decisionId: string) =>
+        Array.from(store.executionAttempts.values())
+          .filter((a) => a.decisionId === decisionId)
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+      getById: async (id: string) => store.executionAttempts.get(id) ?? null,
+    } as unknown as ExecutionAttemptRepository,
+    correctionRepo: {
+      record: async (input: {
+        id: string;
+        sessionId: string;
+        decisionId?: string | null;
+        fingerprint: string;
+        instruction: string;
+      }) => {
+        const list = store.corrections.get(input.sessionId) ?? [];
+        if (list.some((c) => c.fingerprint === input.fingerprint)) return false;
+        list.push({
+          fingerprint: input.fingerprint,
+          decisionId: input.decisionId ?? null,
+          instruction: input.instruction,
+          createdAt: new Date(),
+        });
+        store.corrections.set(input.sessionId, list);
+        return true;
+      },
+      fingerprintsForSession: async (sessionId: string) =>
+        (store.corrections.get(sessionId) ?? []).map((c) => c.fingerprint),
+      countForSession: async (sessionId: string) => (store.corrections.get(sessionId) ?? []).length,
+      listBySession: async (sessionId: string) =>
+        (store.corrections.get(sessionId) ?? []).map((c) => ({
+          sessionId,
+          id: `${sessionId}:${c.fingerprint}`,
+          decisionId: c.decisionId,
+          fingerprint: c.fingerprint,
+          instruction: c.instruction,
+          createdAt: c.createdAt,
+        })),
+      existsForSession: async (sessionId: string, fingerprint: string) =>
+        (store.corrections.get(sessionId) ?? []).some((c) => c.fingerprint === fingerprint),
+    } as unknown as CorrectionRepository,
   };
 }

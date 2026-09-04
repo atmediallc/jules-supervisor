@@ -1,3 +1,4 @@
+import os from "node:os";
 import { createAiProvider } from "@jules/ai";
 import { getConfig, setDbOverrides } from "@jules/config";
 import {
@@ -6,7 +7,9 @@ import {
   AuditRepository,
   BudgetRepository,
   closeDatabase,
+  CorrectionRepository,
   DecisionRepository,
+  ExecutionAttemptRepository,
   getDatabase,
   KillSwitch,
   AiMemoryRepository,
@@ -23,9 +26,10 @@ import { InMemoryDistributedLock, RedisDistributedLock } from "./lock.js";
 import { MemoryContextService } from "./memory-context.js";
 import { SemanticMemoryService } from "./semantic-memory.js";
 import { SupervisionPipeline } from "./pipeline.js";
+import { ExecutionReconciler } from "./reconciler.js";
 import { SessionWatcher } from "./poller.js";
 import { BullMqSupervisorQueue, DirectSupervisorQueue } from "./queue.js";
-import { startHealthServer, stopHealthServer } from "./health.js";
+import { startHealthServer, stopHealthServer, updateHealth } from "./health.js";
 import { startReadyServer, stopReadyServer } from "./ready.js";
 
 async function main() {
@@ -70,6 +74,10 @@ async function main() {
   const auditRepo = new AuditRepository(db);
   const budgetRepo = new BudgetRepository(db);
   const knowledgeRepo = new RepositoryKnowledgeRepository(db);
+  // H3 / H5: durable execution-attempt and correction ledgers.
+  const executionAttemptRepo = new ExecutionAttemptRepository(db);
+  const correctionRepo = new CorrectionRepository(db);
+  const workerId = `${os.hostname()}:${process.pid}`;
 
   // Initialize Jules Client (Live or Mock based on key placeholder)
   const julesClient =
@@ -92,24 +100,57 @@ async function main() {
   // P1: Runtime kill switch — authoritative, DB-backed safety gate.
   const killSwitch = new KillSwitch(new SystemSettingsRepository(db));
 
-  // Distributed Lock (capture the underlying Redis client so shutdown can close it)
+  // Distributed Lock (Phase 3 — FAIL-CLOSED for mutation safety).
+  //
+  // Historical bug: on a Redis connect error the worker silently fell back to
+  // an InMemoryDistributedLock (per-process). In a multi-worker deployment each
+  // process got an independent lock → lost mutual exclusion → two workers could
+  // mutate the same session. This block keeps exclusivity honest:
+  //   - When a real lock is REQUIRED (REDIS_ENABLED) and Redis is up → Redis lock.
+  //   - On Redis failure, if LOCK_REQUIRE_REDIS is set → refuse to start.
+  //   - Otherwise → run in a DEGRADED LOCK state: polling/observation continues
+  //     on the in-memory lock (non-mutating, idempotent), but the pipeline is
+  //     flipped to DEGRADED mode so every external mutation escalates to a human
+  //     until distributed exclusivity can be proven again. Health reports
+  //     lock=degraded so an operator sees the failure.
   let lock: InMemoryDistributedLock | RedisDistributedLock;
   let lockRedisClient: Redis | null = null;
-  if (config.REDIS_ENABLED && !config.USE_IN_MEMORY_QUEUE_FALLBACK) {
+  const lockRequired = config.REDIS_ENABLED && !config.USE_IN_MEMORY_QUEUE_FALLBACK;
+  let lockUnhealthy = false;
+  if (lockRequired) {
+    const redisClient = new Redis(config.REDIS_URL, { lazyConnect: true });
+    redisClient.on("error", (err) => {
+      logger.warn("Redis lock client connection error", { error: (err as Error).message });
+    });
     try {
-      const redisClient = new Redis(config.REDIS_URL, { lazyConnect: true });
-      redisClient.on("error", (err) => {
-        logger.warn("Redis lock client connection error", { error: (err as Error).message });
-      });
       await redisClient.connect();
       lock = new RedisDistributedLock(redisClient);
       lockRedisClient = redisClient;
-    } catch {
-      logger.warn("Redis unavailable for lock, falling back to InMemoryDistributedLock");
+      updateHealth({ lock: "ok", redis: "ok" });
+    } catch (err) {
+      if (config.LOCK_REQUIRE_REDIS) {
+        logger.fatal(
+          "Distributed lock REQUIRED but Redis unavailable — refusing to start (fail-closed).",
+          { error: (err as Error).message },
+        );
+        redisClient.disconnect();
+        throw new Error(
+          `Refusing to start without a distributed lock (LOCK_REQUIRE_REDIS=true, redis ${config.REDIS_URL})`,
+        );
+      }
+      logger.error(
+        "Redis unavailable for distributed lock — entering DEGRADED LOCK mode; mutations will escalate to human review.",
+        { error: (err as Error).message },
+      );
       lock = new InMemoryDistributedLock();
+      lockUnhealthy = true;
+      updateHealth({ lock: "degraded", redis: "degraded" });
+      redisClient.disconnect();
     }
   } else {
     lock = new InMemoryDistributedLock();
+    lockUnhealthy = true;
+    updateHealth({ lock: "disabled", redis: "disabled" });
   }
 
   // P1: Cross-session relational memory service (advisory evidence)
@@ -148,11 +189,43 @@ async function main() {
     approvalRepo,
     auditRepo,
     budgetRepo,
+    executionAttemptRepo,
+    correctionRepo,
+    workerId,
     lock,
     memoryService,
     semanticMemory: semanticMemory ?? undefined,
     killSwitch,
   });
+
+  // Phase 3: if a distributed lock is required but unavailable, the worker must
+  // not auto-mutate (mutual exclusion cannot be proven). Flip to DEGRADED mode
+  // so every mutation escalates to a human until exclusivity is restored.
+  if (lockUnhealthy && lockRequired) {
+    logger.error(
+      "Lock unhealthy — worker running degraded: autonomous mutations will escalate to human review",
+    );
+    pipeline.setDegradedMode(true);
+  }
+
+  // H3: durable execution reconciler — recovers stranded external effects
+  // (dispatch completed but outcome never recorded) and re-drives them with the
+  // same idempotent clientToken, bounded by EXECUTION_MAX_ATTEMPTS.
+  const reconciler = new ExecutionReconciler({
+    config,
+    julesClient,
+    executionAttemptRepo,
+    decisionRepo,
+    workerId,
+    killSwitch,
+  });
+  let reconcileTimer: ReturnType<typeof setInterval> | null = null;
+  reconcileTimer = setInterval(() => {
+    reconciler.reconcileOnce().catch((err) => {
+      logger.warn("Execution reconciler pass failed", { error: (err as Error).message });
+    });
+  }, config.EXECUTION_RECONCILE_INTERVAL_MS);
+  reconcileTimer.unref?.();
 
   // Periodic semantic memory consolidation (expire / stale / reindex /
   // promote / archive) — best-effort, interval from config.
@@ -240,6 +313,11 @@ async function main() {
     forceTimer.unref();
 
     try {
+      // 0. Stop background timers so a periodic reconcile/consolidation pass
+      //    cannot run concurrently with teardown.
+      if (reconcileTimer) clearInterval(reconcileTimer);
+      if (consolidationTimer) clearInterval(consolidationTimer);
+
       // 1. Do not pick up new work.
       await watcher.stop();
 

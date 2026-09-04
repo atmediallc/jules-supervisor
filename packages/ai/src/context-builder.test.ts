@@ -111,6 +111,39 @@ describe("ContextBuilder (P1 memory sections)", () => {
     expect(context.userPrompt).toContain("REDACTED");
   });
 
+  it("redacts secrets from the original task prompt (M1)", () => {
+    const builder = new ContextBuilder();
+    const context = builder.build({
+      ...BASE_INPUT,
+      taskPrompt: "Wire up API key sk-abcdefghijklmnopqrstuvwxyz1234567890 into .env",
+    });
+
+    expect(context.userPrompt).not.toContain("sk-abcdefghijklmnopqrstuvwxyz1234567890");
+  });
+
+  it("caps each recalled memory item's content per-item (M4)", () => {
+    const builder = new ContextBuilder();
+    const context = builder.build({
+      ...BASE_INPUT,
+      recalledMemories: [
+        {
+          memoryId: "mem_huge",
+          memoryType: "procedural",
+          title: "Long memory",
+          content: "Z".repeat(20_000),
+          confidence: 0.9,
+          sourceTrust: "human_approved",
+          relevanceScore: 0.9,
+          whySelected: "long",
+        },
+      ],
+    });
+
+    // MEMORY_ITEM_MAX_CHARS = 4_000; content must never be injected in full.
+    expect(context.userPrompt).not.toContain("Z".repeat(20_000));
+    expect(context.userPrompt).not.toContain("Z".repeat(4_001));
+  });
+
   it("redacts secrets found inside memory content", () => {
     const builder = new ContextBuilder();
     const context = builder.build({

@@ -7,6 +7,8 @@ import {
   DecisionRepository,
   ApprovalRepository,
   AuditRepository,
+  BudgetRepository,
+  runInTransaction,
   sql,
 } from "@jules/db";
 
@@ -345,5 +347,130 @@ describe("Real PostgreSQL 16 & Drizzle Schema Integration", () => {
     expect(finalRecord).not.toBeNull();
     expect(["APPROVED", "REJECTED"]).toContain(finalRecord!.status);
     expect(finalRecord!.status).toBe(result1 ? "APPROVED" : "REJECTED");
+  });
+
+  it("runInTransaction commits ALL repo writes atomically on success", async () => {
+    const sessionId = `ses_txc_${Date.now()}`;
+    const activityId = `act_txc_${Date.now()}`;
+    const decisionId = `dec_txc_${Date.now()}`;
+    const auditId = `aud_txc_${Date.now()}`;
+
+    await sessionRepo.upsert({
+      id: sessionId,
+      name: "Tx Commit Test",
+      repository: "octocat/txc-repo",
+      prompt: "Tx commit test",
+      state: "AWAITING_USER_INPUT",
+    });
+    await activityRepo.create({
+      id: activityId,
+      sessionId,
+      type: "AGENT_MESSAGE",
+      rawPayload: {},
+    });
+
+    // Mirror the web route pattern: construct tx-bound repos inside the helper.
+    const decision = await runInTransaction(db, async (tx) => {
+      const txDecision = new DecisionRepository(tx);
+      const txAudit = new AuditRepository(tx);
+      const created = await txDecision.create({
+        id: decisionId,
+        sessionId,
+        activityId,
+        idempotencyKey: `idem_txc_${Date.now()}`,
+        action: "RESPOND",
+        risk: "low",
+        confidence: 0.9,
+        reason: "Tx commit decision",
+        provider: "openai",
+        model: "gpt-4o",
+        contextDigest: "e".repeat(64),
+        executionState: "EXECUTED",
+      });
+      await txAudit.record({
+        id: auditId,
+        actor: "integration-test",
+        actorType: "SYSTEM",
+        action: "DECISION_RECORDED",
+        targetType: "decision",
+        targetId: decisionId,
+        sessionId,
+        decisionId,
+      });
+      return created;
+    });
+
+    expect(decision.id).toBe(decisionId);
+    // Both the decision AND the audit event committed together.
+    const decCheck = await db.execute(sql`SELECT id FROM decisions WHERE id = ${decisionId}`);
+    expect(decCheck.rows.length).toBe(1);
+    const auditCheck = await db.execute(sql`SELECT id FROM audit_events WHERE id = ${auditId}`);
+    expect(auditCheck.rows.length).toBe(1);
+  });
+
+  it("runInTransaction rolls back ALL repo writes when a later step throws", async () => {
+    const sessionId = `ses_txr_${Date.now()}`;
+    const activityId = `act_txr_${Date.now()}`;
+    const decisionId = `dec_txr_${Date.now()}`;
+    const auditId = `aud_txr_${Date.now()}`;
+
+    await sessionRepo.upsert({
+      id: sessionId,
+      name: "Tx Rollback Test",
+      repository: "octocat/txr-repo",
+      prompt: "Tx rollback test",
+      state: "AWAITING_USER_INPUT",
+    });
+    await activityRepo.create({
+      id: activityId,
+      sessionId,
+      type: "AGENT_MESSAGE",
+      rawPayload: {},
+    });
+
+    // Mirror the approval route pattern: update + decision stamp + audit + budget.
+    await expect(
+      runInTransaction(db, async (tx) => {
+        const txDecision = new DecisionRepository(tx);
+        const txAudit = new AuditRepository(tx);
+        const txBudget = new BudgetRepository(tx);
+        await txDecision.create({
+          id: decisionId,
+          sessionId,
+          activityId,
+          idempotencyKey: `idem_txr_${Date.now()}`,
+          action: "RESPOND",
+          risk: "low",
+          confidence: 0.9,
+          reason: "Tx rollback decision",
+          provider: "openai",
+          model: "gpt-4o",
+          contextDigest: "f".repeat(64),
+          executionState: "EXECUTED",
+        });
+        await txAudit.record({
+          id: auditId,
+          actor: "integration-test",
+          actorType: "SYSTEM",
+          action: "DECISION_RECORDED",
+          targetType: "decision",
+          targetId: decisionId,
+          sessionId,
+          decisionId,
+        });
+        // A later step fails (e.g. an audit or budget write) — the whole batch
+        // must roll back, leaving no decision and no audit behind.
+        throw new Error("simulated downstream failure after writes");
+      }),
+    ).rejects.toThrow("simulated downstream failure after writes");
+
+    // NEITHER the decision NOR the audit persisted — atomic rollback.
+    const decCheck = await db.execute(sql`SELECT id FROM decisions WHERE id = ${decisionId}`);
+    expect(decCheck.rows.length).toBe(0);
+    const auditCheck = await db.execute(sql`SELECT id FROM audit_events WHERE id = ${auditId}`);
+    expect(auditCheck.rows.length).toBe(0);
+    // The session/activity committed OUTSIDE the transaction are untouched.
+    const sesCheck = await db.execute(sql`SELECT id FROM sessions WHERE id = ${sessionId}`);
+    expect(sesCheck.rows.length).toBe(1);
   });
 });

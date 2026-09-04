@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 import { getConfig } from "@jules/config";
 import { validateProviderUrl } from "@jules/ai";
 
@@ -18,8 +19,16 @@ export const dynamic = "force-dynamic";
 
 const timeoutMs = 8000;
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    // Defense-in-depth: binary auth gate (same pattern as all other API routes).
+    // This route is behind withAuth middleware, but the in-route check guards
+    // against middleware misconfiguration.
+    const token = await getToken({ req } as never);
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const config = getConfig();
     const providerType = config.AI_PROVIDER_TYPE;
 

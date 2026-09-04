@@ -46,6 +46,12 @@ export interface ProviderRouterOptions {
   providers: ProviderEntry[];
   /** Max same-provider retries for retryable failures (wires MAX_AI_RETRIES). */
   maxRetries?: number;
+  /**
+   * Hard ceiling (ms) on the WHOLE decide orchestration (M3). Prevents
+   * providers × retries from stacking unbounded (worst case without this:
+   * N providers × (1+retries) × per-call timeout). Defaults to 120s.
+   */
+  totalTimeoutMs?: number;
   /** CPU-clock injection for deterministic circuit tests. */
   now?: () => number;
 }
@@ -86,6 +92,7 @@ export class DefaultProviderRouter implements ProviderRouter {
   public readonly name = "provider-router";
   private readonly providers: ProviderEntry[];
   private readonly maxRetries: number;
+  private readonly totalTimeoutMs: number;
 
   constructor(options: ProviderRouterOptions) {
     if (options.providers.length === 0) {
@@ -96,6 +103,7 @@ export class DefaultProviderRouter implements ProviderRouter {
     // retry cap. Defaults to 0 (no same-provider retry) unless configured,
     // because AI calls cost money — prefer falling back over retrying in place.
     this.maxRetries = Math.max(0, options.maxRetries ?? 0);
+    this.totalTimeoutMs = Math.max(0, options.totalTimeoutMs ?? 120_000);
     for (const entry of this.providers) {
       entry.breaker = entry.breaker ?? new CircuitBreaker({ now: options.now });
     }
@@ -120,8 +128,44 @@ export class DefaultProviderRouter implements ProviderRouter {
       canSatisfy(entry.capabilities, requirement),
     );
 
-    // Track completion: if the FIRST eligible provider's circuit is open on the
-    // primary, fall through to the next. We exhaust all eligible providers.
+    // M3: hard ceiling over the WHOLE orchestration. A per-provider call is
+    // bounded by its own signal/timeout, but providers × retries could stack
+    // without an overall deadline. Combine the caller's signal with a local
+    // timeout signal that aborts once totalTimeoutMs elapses. Always use the
+    // local controller.signal (which is aborted on caller-abort or the total
+    // deadline) so the orchestration signal is never undefined.
+    const controller = new AbortController();
+    let timeoutTimer: NodeJS.Timeout | undefined;
+    if (this.totalTimeoutMs > 0) {
+      timeoutTimer = setTimeout(() => controller.abort(), this.totalTimeoutMs);
+    }
+    const onCallerAbort = () => controller.abort();
+    signal?.addEventListener("abort", onCallerAbort, { once: true });
+
+    try {
+      return await this.routeWithSignal(
+        context,
+        eligible,
+        attempts,
+        controller.signal,
+      );
+    } finally {
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      signal?.removeEventListener("abort", onCallerAbort);
+    }
+  }
+
+  /**
+   * Exhaust the eligible providers (failover + same-provider retries) under a
+   * single composed AbortSignal that enforces the overall M3 deadline. Returns
+   * the first structured success, or throws once all providers are exhausted.
+   */
+  private async routeWithSignal(
+    context: BuiltContext,
+    eligible: ProviderEntry[],
+    attempts: ProviderAttempt[],
+    signal: AbortSignal,
+  ): Promise<RoutedDecisionResponse> {
     let lastFailure: ProviderFailure | null = null;
 
     for (const entry of eligible) {

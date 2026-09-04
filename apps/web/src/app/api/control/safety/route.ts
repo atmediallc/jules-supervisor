@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { z } from "zod";
 import { getConfig } from "@jules/config";
-import { AuditRepository, getDatabase, KillSwitch, SafetyState, SystemSettingsRepository } from "@jules/db";
+import { AuditRepository, getDatabase, KillSwitch, runInTransaction, SafetyState, SystemSettingsRepository } from "@jules/db";
 import { generateId } from "@jules/shared";
 
 const SafetyBodySchema = z.object({
@@ -55,32 +55,38 @@ export async function POST(req: NextRequest) {
 
     const config = getConfig();
     const db = getDatabase(config.DATABASE_URL);
-    const killSwitch = new KillSwitch(new SystemSettingsRepository(db));
 
-    const state = await killSwitch.setState(parsed.data.state as SafetyState, {
-      by: actor,
-      reason: parsed.data.reason,
-    });
-
-    // Audit the kill-switch transition (operator → runtime safety state).
+    // C3 transactional atomicity: the safety-state transition and its audit
+    // trail commit together (or not at all). An un-audited safety flip must
+    // never persist, so an audit failure rolls back the transition too.
+    let state: Awaited<ReturnType<KillSwitch["setState"]>>;
     try {
-      const auditRepo = new AuditRepository(db);
-      await auditRepo.record({
-        id: generateId("audit"),
-        actor,
-        actorType: "HUMAN",
-        action: "SAFETY_STATE_CHANGE",
-        targetType: "kill_switch",
-        targetId: parsed.data.state,
-        afterState: {
-          state: parsed.data.state,
-          reason: parsed.data.reason ?? null,
-        },
+      state = await runInTransaction(db, async (tx) => {
+        const txKillSwitch = new KillSwitch(new SystemSettingsRepository(tx));
+        const newState = await txKillSwitch.setState(parsed.data.state as SafetyState, {
+          by: actor,
+          reason: parsed.data.reason,
+        });
+
+        const txAudit = new AuditRepository(tx);
+        await txAudit.record({
+          id: generateId("audit"),
+          actor,
+          actorType: "HUMAN",
+          action: "SAFETY_STATE_CHANGE",
+          targetType: "kill_switch",
+          targetId: parsed.data.state,
+          afterState: {
+            state: parsed.data.state,
+            reason: parsed.data.reason ?? null,
+          },
+        });
+        return newState;
       });
-    } catch (auditErr: unknown) {
-      // Audit failure must not hide the state change itself, but log it so
-      // operators can detect lost lineage.
-      console.error("Failed to record kill-switch audit event:", auditErr);
+    } catch {
+      // A failed write or a failed audit both roll back the transition — the
+      // safety state cannot change without a durable audit record (fail-closed).
+      return NextResponse.json({ ok: false, error: "Internal server error" }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, ...state });

@@ -6,6 +6,28 @@ const { Pool } = pg;
 
 export type Database = NodePgDatabase<typeof schema>;
 
+/**
+ * Run a batch of repository writes inside a single Postgres transaction so they
+ * commit atomically (all-or-nothing). Repositories are constructor-injected with
+ * their db handle, so construct tx-bound repo instances inside the callback:
+ *
+ *   await runInTransaction(db, async (tx) => {
+ *     const a = new AuditRepository(tx);
+ *     const d = new DecisionRepository(tx);
+ *     await d.markExecuted(id, "EXECUTED");
+ *     await a.record({ ... });
+ *   });
+ *
+ * If any step throws, every write in the callback is rolled back. Nested
+ * runInTransaction calls are safe (drizzle uses savepoints).
+ */
+export async function runInTransaction<T>(
+  db: Database,
+  fn: (tx: Database) => Promise<T>,
+): Promise<T> {
+  return db.transaction((tx) => fn(tx as unknown as Database));
+}
+
 let _db: Database | null = null;
 let _pool: pg.Pool | null = null;
 

@@ -38,3 +38,19 @@ When configuring custom AI providers or OmniRoute endpoints:
 1. **Database Constraint**: `idempotency_key` unique index on `decisions` and `decision_executions`.
 2. **Distributed Lock**: Redis-backed single-job mutex per `sessionId` ensures concurrent pollers or workers cannot duplicate replies.
 3. **Pre-Execution Check**: Immediately prior to dispatching any Jules API mutation, the session state is queried to ensure the pending activity is still current and unprocessed.
+
+## 5. Authentication & Authorization Model (C2 — Single-Admin Invariant)
+
+The control plane enforces a **binary single-admin authentication model**: all API routes (read and write) require a valid NextAuth JWT session token. There is exactly one set of credentials (`AUTH_USERNAME` / `AUTH_PASSWORD`), producing a single identity (`name: 'Admin'`). This is a deliberate architectural choice — Jules Supervisor is a single-operator tool, not a multi-tenant platform.
+
+**Defense-in-depth layers:**
+
+1. **NextAuth credentials provider** with `timingSafeEqual` (timing-attack resistant credential comparison).
+2. **`withAuth` middleware** (binary gate: any token passes; no token → 401) on all routes except `/api/health`, `/api/ready`, `/api/metrics`, `/api/events`, and static assets.
+3. **In-route `getToken` re-check** on all mutation endpoints (`POST /api/control/safety`, `PUT /api/settings`, `POST /api/approvals/[id]`, `GET /api/settings/models`). This guards against middleware misconfiguration.
+4. **Rate limiting**: 10 login attempts per minute per IP on the credentials callback.
+5. **JWT expiry**: 8-hour `maxAge`; tokens are stateless and cannot be revoked without changing `NEXTAUTH_SECRET`.
+
+**Why no multi-role RBAC:** The system is designed for a single human operator supervising one AI assistant. The operator is the sole decision-maker (approve/reject plans, adjust settings, flip the kill switch). There is no read-only role because the operator must see everything to make informed decisions. Adding roles would introduce complexity without a corresponding security benefit for this threat model.
+
+**Audit trail:** Every mutation (safety transitions, settings changes, approval decisions) records the actor (`token.name`) in the immutable `audit_events` table. If a different credential set were added, the audit trail would track which operator acted.

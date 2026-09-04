@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { z } from "zod";
 import { getConfig } from "@jules/config";
-import { AuditRepository, getDatabase, SystemSettingsRepository } from "@jules/db";
+import { AuditRepository, getDatabase, runInTransaction, SystemSettingsRepository } from "@jules/db";
 import { generateId } from "@jules/shared";
 import { logRouteError } from "../route-logger";
 
@@ -391,41 +391,48 @@ export async function PUT(req: NextRequest) {
 
     const config = getConfig();
     const db = getDatabase(config.DATABASE_URL);
-    const repo = new SystemSettingsRepository(db);
 
     const validation = validateUpdatePayload(parsed.data.settings);
     if (!validation.ok) {
       return validation.response;
     }
 
-    const results = await repo.upsertMany(
-      validation.updates.map((u) => ({
-        key: u.key,
-        value: u.value,
-        category: u.category,
-        isSecret: u.isSecret,
-        description: u.description,
-      })),
-    );
-
-    // Audit the privileged mutation: which settings changed and by whom.
-    // Secret values are never written into the audit record.
+    // C3 transactional atomicity: the settings write and its audit trail commit
+    // together (or not at all) — a settings mutation never persists un-audited.
+    let results: Awaited<ReturnType<SystemSettingsRepository["upsertMany"]>>;
     try {
-      const auditRepo = new AuditRepository(db);
-      await auditRepo.record({
-        id: generateId("audit"),
-        actor,
-        actorType: "HUMAN",
-        action: "SETTINGS_UPDATE",
-        targetType: "system_settings",
-        targetId: "bulk",
-        afterState: {
-          keys: validation.updates.map((u) => u.key),
-        },
-        metadata: { count: validation.updates.length },
+      results = await runInTransaction(db, async (tx) => {
+        const txRepo = new SystemSettingsRepository(tx);
+        const upserted = await txRepo.upsertMany(
+          validation.updates.map((u) => ({
+            key: u.key,
+            value: u.value,
+            category: u.category,
+            isSecret: u.isSecret,
+            description: u.description,
+          })),
+        );
+
+        // Audit the privileged mutation: which settings changed and by whom.
+        // Secret values are never written into the audit record.
+        const txAudit = new AuditRepository(tx);
+        await txAudit.record({
+          id: generateId("audit"),
+          actor,
+          actorType: "HUMAN",
+          action: "SETTINGS_UPDATE",
+          targetType: "system_settings",
+          targetId: "bulk",
+          afterState: {
+            keys: validation.updates.map((u) => u.key),
+          },
+          metadata: { count: validation.updates.length },
+        });
+        return upserted;
       });
-    } catch (auditErr: unknown) {
-      logRouteError("PUT /api/settings audit", auditErr);
+    } catch (err: unknown) {
+      logRouteError("PUT /api/settings", err);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
     // Clear the cached config so new values take effect on next getConfig() call

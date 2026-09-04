@@ -24,11 +24,11 @@ export const EnvSchema = z.object({
   AUTO_RESPOND_ENABLED: z
     .string()
     .transform((val) => val === "true" || val === "1")
-    .default("false"),
+    .default(false),
   AUTO_PLAN_APPROVAL_ENABLED: z
     .string()
     .transform((val) => val === "true" || val === "1")
-    .default("false"),
+    .default(false),
   MAX_SESSION_CYCLES: z.coerce.number().min(1).max(50).default(5),
   MAX_AI_RETRIES: z.coerce.number().min(0).max(10).default(3),
   POLL_INTERVAL_MS: z.coerce.number().min(1000).max(300000).default(5000),
@@ -57,19 +57,19 @@ export const EnvSchema = z.object({
   AI_MEMORY_ENABLED: z
     .string()
     .transform((val) => val === "true" || val === "1")
-    .default("false"),
+    .default(false),
   AI_MEMORY_RECALL_ENABLED: z
     .string()
     .transform((val) => val === "true" || val === "1")
-    .default("true"),
+    .default(true),
   AI_MEMORY_REFLECTION_ENABLED: z
     .string()
     .transform((val) => val === "true" || val === "1")
-    .default("true"),
+    .default(true),
   AI_MEMORY_CONSOLIDATION_ENABLED: z
     .string()
     .transform((val) => val === "true" || val === "1")
-    .default("true"),
+    .default(true),
   // Qdrant vector database
   QDRANT_URL: z.string().url().default("http://127.0.0.1:6333"),
   QDRANT_API_KEY: z.string().default(""),
@@ -128,7 +128,7 @@ export const EnvSchema = z.object({
   ALLOW_INSECURE_LOCAL_ENDPOINTS: z
     .string()
     .transform((val) => val === "true" || val === "1")
-    .default("false"),
+    .default(false),
   TRUSTED_INTERNAL_AI_HOSTS: z
     .string()
     .default("localhost,127.0.0.1,omniroute")
@@ -195,11 +195,11 @@ export const EnvSchema = z.object({
   REDIS_ENABLED: z
     .string()
     .transform((val) => val === "true" || val === "1")
-    .default("true"),
+    .default(true),
   USE_IN_MEMORY_QUEUE_FALLBACK: z
     .string()
     .transform((val) => val === "true" || val === "1")
-    .default("false"),
+    .default(false),
   // Phase 3: when true and REDIS_ENABLED, a worker that cannot acquire a REAL
   // distributed lock refuses to start (fail-closed) rather than falling back to
   // an in-memory per-process lock (which breaks mutual exclusion across
@@ -209,7 +209,7 @@ export const EnvSchema = z.object({
   LOCK_REQUIRE_REDIS: z
     .string()
     .transform((val) => val === "true" || val === "1")
-    .default("false"),
+    .default(false),
 
   // Security & Web
   SESSION_SECRET: z.string().min(16).default("session-secret-at-least-32-chars-length-12345"),

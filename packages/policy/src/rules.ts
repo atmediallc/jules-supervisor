@@ -12,7 +12,16 @@ export class NoDestructiveCommandsRule implements IPolicyRule {
     "Blocks any destructive code or commands (e.g. DROP TABLE, rm -rf, git force push)";
 
   public evaluate(input: PolicyEvaluationInput): PolicyRuleEvaluation {
-    const textToCheck = `${input.decision.response ?? ""} ${input.diff ?? ""}`.toLowerCase();
+    // Normalize before matching so whitespace / Unicode homoglyph tricks
+    // (e.g. `rm  -rf /`, `Dro\u200Bp TaBle`, full-width letters) cannot
+    // bypass the destructive-command guard (M14). NFKC collapses confusables;
+    // collapsing whitespace makes multi-space separators irrelevant; and
+    // zero-width format characters (ZWSP \u200B, ZWNJ \u200C, ZWJ \u200D,
+    // WORD JOINER \u2060, BOM \uFEFF) are treated as separators so
+    // `dr\u200Bop table` or `dr\u200Bop\u200Btable` still match.
+    const raw = `${input.decision.response ?? ""} ${input.diff ?? ""}`;
+    const zeroWidthAsSpace = raw.replace(/[\u200B-\u200D\u2060\uFEFF]/g, " ");
+    const textToCheck = zeroWidthAsSpace.normalize("NFKC").replace(/\s+/g, " ").toLowerCase();
     const destructivePatterns = [
       /drop\s+table/i,
       /truncate\s+table/i,

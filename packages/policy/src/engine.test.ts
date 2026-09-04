@@ -25,6 +25,33 @@ describe("PolicyEngine", () => {
     expect(result.reasons[0]).toContain("destructive pattern");
   });
 
+  it("blocks destructive commands with whitespace/Unicode obfuscation (M14)", () => {
+    const engine = new PolicyEngine();
+    const cases = [
+      "Run `rm  -rf  /` now", // extra whitespace
+      "drop\u200Btable users", // zero-width space inside phrase
+      "ＤＲＯＰ　ＴＡＢＬＥ　users", // full-width letters + ideographic space (NFKC)
+      "rm -rf /tmp \u00A0 --force", // non-breaking space separators
+    ];
+    for (const response of cases) {
+      const result = engine.evaluate({
+        decision: {
+          action: "RESPOND",
+          response,
+          risk: "low",
+          confidence: 1.0,
+          reason: "test",
+          evidence: [],
+          concerns: [],
+        },
+        sessionId: "ses_014",
+        repository: "octocat/repo",
+      });
+      expect(result.allowed, `should block: ${response}`).toBe(false);
+      expect(result.isHardBlocked, `should hard-block: ${response}`).toBe(true);
+    }
+  });
+
   it("requires human review for files in security and migration paths", () => {
     const result = engine.evaluate({
       decision: {

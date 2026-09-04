@@ -10,7 +10,7 @@ export const JulesSessionSchema = z.object({
   state: z.string().default("QUEUED"),
   createTime: z.string().optional(),
   updateTime: z.string().optional(),
-  metadata: z.record(z.unknown()).optional().default({}),
+  metadata: z.record(z.string(), z.unknown()).optional().default({}),
 });
 export type JulesSession = z.infer<typeof JulesSessionSchema>;
 
@@ -43,8 +43,8 @@ export const JulesActivitySchema = z.object({
   content: z.string().optional().default(""),
   plan: JulesPlanSchema.optional(),
   patch: JulesPatchSchema.optional(),
-  toolCall: z.record(z.unknown()).optional(),
-  toolResult: z.record(z.unknown()).optional(),
+  toolCall: z.record(z.string(), z.unknown()).optional(),
+  toolResult: z.record(z.string(), z.unknown()).optional(),
   createTime: z.string().optional(),
 });
 export type JulesActivity = z.infer<typeof JulesActivitySchema>;

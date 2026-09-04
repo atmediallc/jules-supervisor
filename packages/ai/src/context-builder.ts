@@ -12,6 +12,7 @@ export interface ContextBuilderOptions {
 /** Hard per-item excerpt ceilings inside memory sections. */
 const KNOWLEDGE_ITEM_MAX_CHARS = 4_000;
 const PRECEDENT_EXCERPT_MAX_CHARS = 1_500;
+const MEMORY_ITEM_MAX_CHARS = 4_000;
 
 /** Fallback advisory injected into system instructions when memory present. */
 const MEMORY_ADVISORY_DIRECTIVE =
@@ -56,7 +57,7 @@ Session ID: ${input.sessionId}
 Repository: ${input.repository}
 Branch: ${input.branch}
 Current State: ${input.currentState}
-Original Task: ${input.taskPrompt}
+Original Task: ${redactSensitiveData(input.taskPrompt)}
 </session_metadata>
 
 <untrusted_context>
@@ -165,7 +166,7 @@ Provide your evaluation in strict JSON conforming to:
     let used = 0;
     const lines: string[] = [];
     for (const item of recalled) {
-      const safe = redactSensitiveData(item.content);
+      const safe = redactSensitiveData(item.content).slice(0, MEMORY_ITEM_MAX_CHARS);
       const header = `- [${item.memoryType}][trust=${item.sourceTrust}][conf=${item.confidence.toFixed(2)}][rel=${item.relevanceScore.toFixed(2)}] ${item.title.replace(/\n/g, " ")}`;
       const why = item.whySelected ? ` (why: ${item.whySelected})` : "";
       const line = `${header}${why}: ${safe}`;

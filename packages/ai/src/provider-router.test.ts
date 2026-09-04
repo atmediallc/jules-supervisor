@@ -27,19 +27,28 @@ const context: BuiltContext = {
 class FakeProvider implements IAiDecisionProvider {
   public name: string;
   public calls: number;
-  private behavior: "ok" | "always-fail" | "fail-once" | "auth" | "malformed";
+  private behavior: "ok" | "always-fail" | "fail-once" | "auth" | "malformed" | "hang";
   private failureCount: number;
   private modeledProviderName?: string;
 
-  constructor(name: string, behavior: "ok" | "always-fail" | "fail-once" | "auth" | "malformed" = "ok") {
+  constructor(name: string, behavior: "ok" | "always-fail" | "fail-once" | "auth" | "malformed" | "hang" = "ok") {
     this.name = name;
     this.calls = 0;
     this.behavior = behavior;
     this.failureCount = 0;
   }
 
-  public async decide(): Promise<AiDecisionResponse> {
+  public async decide(_context?: BuiltContext, signal?: AbortSignal): Promise<AiDecisionResponse> {
     this.calls++;
+    if (this.behavior === "hang") {
+      // Never resolves on its own; only rejects if the router's total-timeout
+      // signal aborts (M3). Mirrors a provider that ignores its own timeout.
+      return new Promise<AiDecisionResponse>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { _aborted: true })), {
+          once: true,
+        });
+      });
+    }
     if (this.behavior === "always-fail") {
       throw new Error(`${this.name} down`);
     }
@@ -393,5 +402,37 @@ describe("ProviderRouter real HTTP failover", () => {
       await primary.close();
       await fallback.close();
     }
+  });
+});
+
+describe("ProviderRouter total-timeout (M3)", () => {
+  it("bounds a hanging provider by the overall orchestration deadline", async () => {
+    const hanging = new FakeProvider("hang", "hang");
+    const router = new DefaultProviderRouter({
+      providers: [entry(hanging)],
+      maxRetries: 0,
+      totalTimeoutMs: 80,
+    });
+
+    const started = Date.now();
+    await expect(router.decide(context)).rejects.toThrow();
+    const elapsed = Date.now() - started;
+    // Must give up well before ever succeeding; hanging provider never resolves.
+    expect(elapsed).toBeGreaterThanOrEqual(70);
+    expect(elapsed).toBeLessThan(2_000);
+    expect(hanging.calls).toBe(1);
+  });
+
+  it("clears the deadline timer after a normal success", async () => {
+    const primary = new FakeProvider("primary");
+    const router = new DefaultProviderRouter({
+      providers: [entry(primary)],
+      maxRetries: 0,
+      totalTimeoutMs: 80,
+    });
+
+    const res = await router.decide(context);
+    expect(res.provider).toBe("primary");
+    expect(primary.calls).toBe(1);
   });
 });

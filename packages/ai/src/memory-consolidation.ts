@@ -39,7 +39,7 @@ export interface ConsolidationReport {
  */
 export async function expireMemories(
   repo: AiMemoryRepository,
-  config: ConsolidationConfig,
+  _config: ConsolidationConfig,
 ): Promise<number> {
   const count = await repo.expireOverdue();
   if (count > 0) metrics.recordStaleMemory(count);

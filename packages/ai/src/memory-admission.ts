@@ -107,8 +107,9 @@ export async function detectDuplicate(
         5,
       );
       if (hits.length > 0 && hits[0]!.score >= similarityThreshold) {
-        const id = hits[0]!.id;
-        return repo.findById(id);
+        const memoryId =
+          (hits[0]!.payload as { memoryId?: string } | undefined)?.memoryId ?? hits[0]!.id;
+        return repo.findById(memoryId);
       }
     } catch {
       // Semantic dedup is best-effort; degrade to fingerprint-only.

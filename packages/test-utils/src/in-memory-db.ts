@@ -149,14 +149,12 @@ export class InMemoryRepositoryStore {
 
   // Decisions
   public async createDecision(data: DecisionInsert): Promise<DecisionSelect> {
-    // Check idempotency
+    // Check idempotency (matches PostgreSQL onConflictDoNothing in DecisionRepository)
     const existing = Array.from(this.decisions.values()).find(
       (d) => d.idempotencyKey === data.idempotencyKey,
     );
     if (existing) {
-      const err = new Error("Unique constraint violation: idempotency_key already exists");
-      (err as unknown as { code: string }).code = "23505";
-      throw err;
+      return existing;
     }
 
     const row: DecisionSelect = {
@@ -599,9 +597,10 @@ export function createMockRepositories(store: InMemoryRepositoryStore): {
       },
       recoverStale: async (id: string, owner: string, leaseMs: number) => {
         const row = store.executionAttempts.get(id);
-        const expiredBefore = new Date(Date.now() - leaseMs);
-        if (!row || !row.claimExpiry || row.claimExpiry >= expiredBefore) return null;
         const now = new Date();
+        if (!row || !row.claimExpiry || row.claimExpiry >= now || !["CLAIMED", "EXECUTING"].includes(row.status)) {
+          return null;
+        }
         row.status = "CLAIMED";
         row.claimOwner = owner;
         row.claimExpiry = new Date(now.getTime() + leaseMs);
@@ -620,7 +619,7 @@ export function createMockRepositories(store: InMemoryRepositoryStore): {
       },
       markSucceeded: async (id: string, externalResult?: string | null) => {
         const row = store.executionAttempts.get(id);
-        if (!row) return;
+        if (!row || !["CLAIMED", "EXECUTING"].includes(row.status)) return;
         row.status = "SUCCEEDED";
         row.completedAt = new Date();
         row.externalResult = externalResult ?? null;
@@ -630,7 +629,7 @@ export function createMockRepositories(store: InMemoryRepositoryStore): {
       },
       markFailed: async (id: string, category: "TRANSIENT" | "PERMANENT", message?: string | null) => {
         const row = store.executionAttempts.get(id);
-        if (!row) return;
+        if (!row || !["CLAIMED", "EXECUTING"].includes(row.status)) return;
         row.status = "FAILED";
         row.completedAt = new Date();
         row.errorCategory = category;
@@ -639,7 +638,7 @@ export function createMockRepositories(store: InMemoryRepositoryStore): {
       },
       markUnknownEffect: async (id: string, category: "AMBIGUOUS", message?: string | null) => {
         const row = store.executionAttempts.get(id);
-        if (!row) return;
+        if (!row || !["CLAIMED", "EXECUTING"].includes(row.status)) return;
         row.status = "UNKNOWN_EFFECT";
         row.completedAt = new Date();
         row.errorCategory = category;
@@ -655,10 +654,10 @@ export function createMockRepositories(store: InMemoryRepositoryStore): {
       },
       listInFlight: async () =>
         Array.from(store.executionAttempts.values()).filter((a) => a.status === "EXECUTING"),
-      findStaleAttempts: async (leaseMs: number, statuses: string[] = ["CLAIMED", "EXECUTING"]) => {
-        const threshold = new Date(Date.now() - leaseMs);
+      findStaleAttempts: async (_leaseMs: number, statuses: string[] = ["CLAIMED", "EXECUTING"]) => {
+        const now = new Date();
         return Array.from(store.executionAttempts.values()).filter(
-          (a) => a.claimExpiry !== null && a.claimExpiry < threshold && statuses.includes(a.status),
+          (a) => a.claimExpiry !== null && a.claimExpiry < now && statuses.includes(a.status),
         );
       },
       listByDecision: async (decisionId: string) =>

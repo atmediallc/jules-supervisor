@@ -159,6 +159,11 @@ export class ExecutionReconciler {
           });
         }
         await this.executionAttemptRepo.markSucceeded(newAttemptId);
+        await this.executionAttemptRepo.markFailed(
+          claimed.id,
+          "TRANSIENT",
+          `Superseded by re-drive attempt ${newAttemptId}`,
+        );
         await this.decisionRepo.markExecuted(claimed.decisionId, "EXECUTED");
         result.succeeded += 1;
       } catch (err) {
@@ -174,6 +179,11 @@ export class ExecutionReconciler {
         // human visibility. Marking UNKNOWN_EFFECT (terminal) guarantees the
         // attempt is not re-picked on the next pass.
         await this.executionAttemptRepo.markUnknownEffect(newAttemptId, "AMBIGUOUS", message);
+        await this.executionAttemptRepo.markFailed(
+          claimed.id,
+          "TRANSIENT",
+          `Superseded by re-drive attempt ${newAttemptId} which failed: ${message}`,
+        );
         await this.decisionRepo.markExecuted(claimed.decisionId, "UNKNOWN_EFFECT", message);
         result.escalated += 1;
       }

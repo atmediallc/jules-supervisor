@@ -61,7 +61,6 @@ export class ExecutionAttemptRepository {
    */
   async recoverStale(id: string, owner: string, leaseMs: number) {
     const now = new Date();
-    const expiredBefore = new Date(now.getTime() - leaseMs);
     const expiry = new Date(now.getTime() + leaseMs);
     const updated = await this.db
       .update(executionAttempts)
@@ -76,7 +75,8 @@ export class ExecutionAttemptRepository {
       .where(
         and(
           eq(executionAttempts.id, id),
-          lt(executionAttempts.claimExpiry, expiredBefore),
+          lt(executionAttempts.claimExpiry, now),
+          inArray(executionAttempts.status, ["CLAIMED", "EXECUTING"]),
         ),
       )
       .returning();
@@ -104,7 +104,12 @@ export class ExecutionAttemptRepository {
         errorCategory: null,
         errorMessage: null,
       })
-      .where(eq(executionAttempts.id, id));
+      .where(
+        and(
+          eq(executionAttempts.id, id),
+          inArray(executionAttempts.status, ["CLAIMED", "EXECUTING"]),
+        ),
+      );
   }
 
   /**
@@ -120,7 +125,12 @@ export class ExecutionAttemptRepository {
         errorCategory: category,
         errorMessage: message ?? null,
       })
-      .where(eq(executionAttempts.id, id));
+      .where(
+        and(
+          eq(executionAttempts.id, id),
+          inArray(executionAttempts.status, ["CLAIMED", "EXECUTING"]),
+        ),
+      );
   }
 
   /**
@@ -138,7 +148,12 @@ export class ExecutionAttemptRepository {
         errorCategory: category,
         errorMessage: message ?? null,
       })
-      .where(eq(executionAttempts.id, id));
+      .where(
+        and(
+          eq(executionAttempts.id, id),
+          inArray(executionAttempts.status, ["CLAIMED", "EXECUTING"]),
+        ),
+      );
   }
 
   /** Flag an attempt for human reconciliation (e.g. max attempts reached). */
@@ -156,14 +171,14 @@ export class ExecutionAttemptRepository {
 
   /** Stale (past lease) CLAIMED/EXECUTING attempts that need reconciliation. */
   async findStaleAttempts(
-    leaseMs: number,
+    _leaseMs?: number,
     statuses: ExecutionAttemptStatusValue[] = ["CLAIMED", "EXECUTING"],
   ) {
-    const threshold = new Date(Date.now() - leaseMs);
+    const now = new Date();
     return this.db
       .select()
       .from(executionAttempts)
-      .where(and(lt(executionAttempts.claimExpiry, threshold), inArray(executionAttempts.status, statuses)));
+      .where(and(lt(executionAttempts.claimExpiry, now), inArray(executionAttempts.status, statuses)));
   }
 
   async listByDecision(decisionId: string) {

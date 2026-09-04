@@ -140,7 +140,7 @@ function selectDiverse(
 ): RecalledMemoryItem[] {
   const selected: RecalledMemoryItem[] = [];
   const typeCounts: Record<string, number> = {};
-  let pool = [...ranked];
+  const pool = [...ranked];
 
   while (selected.length < topK && pool.length > 0) {
     let bestIdx = -1;

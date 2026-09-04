@@ -17,6 +17,7 @@ import {
   ExecutionGateResult,
   fingerprintDefect,
   LoopDetector,
+  RiskLevel,
 } from "@jules/core";
 import {
   ActivityRepository,
@@ -393,13 +394,14 @@ export class SupervisionPipeline {
         diff: activity.patch?.diff,
       });
 
-      // Effective risk is the highest between AI, deterministic, and policy
-      const effectiveRisk =
-        deterministicRisk.level === "critical" || policyResult.effectiveRisk === "critical"
-          ? "critical"
-          : deterministicRisk.level === "high" || policyResult.effectiveRisk === "high"
-            ? "high"
-            : proposedDecision.risk;
+      // Effective risk is highest between AI, deterministic, and policy
+      const rOrder: Record<RiskLevel, number> = { low: 0, medium: 1, high: 2, critical: 3 };
+      const cRisks: RiskLevel[] = [proposedDecision.risk, deterministicRisk.level, policyResult.effectiveRisk];
+      let maxR: RiskLevel = "low";
+      for (const r of cRisks) {
+        if ((rOrder[r] ?? 0) > (rOrder[maxR] ?? 0)) maxR = r;
+      }
+      const effectiveRisk = maxR;
 
       metrics.incrementDecision(proposedDecision.action);
       metrics.incrementRisk(effectiveRisk);
@@ -416,6 +418,26 @@ export class SupervisionPipeline {
           confidenceThreshold: this.config.CONFIDENCE_THRESHOLD,
         },
       );
+
+      // Policy Engine overrides: Hard block or human review requirement must dominate softer outcomes
+      if (policyResult.isHardBlocked) {
+        gate = {
+          ...gate,
+          allowed: false,
+          autoExecuted: false,
+          blocked: true,
+          requiresHumanReview: false,
+          reason: `POLICY_HARD_BLOCK: ${policyResult.reasons.join("; ") || gate.reason}`,
+        };
+      } else if (policyResult.requiresHumanReview || !policyResult.allowed) {
+        gate = {
+          ...gate,
+          allowed: false,
+          autoExecuted: false,
+          requiresHumanReview: true,
+          reason: `POLICY_REVIEW_REQUIRED: ${policyResult.reasons.join("; ") || gate.reason}`,
+        };
+      }
 
       // 7a. Degraded-mode safety override (REQUIRED): when the worker is
       // running degraded (e.g. Redis/queue infra unavailable → in-memory
@@ -438,6 +460,22 @@ export class SupervisionPipeline {
         };
       }
 
+      const hasExecutablePayload =
+        proposedDecision.action === "APPROVE_PLAN" ||
+        Boolean(proposedDecision.response && proposedDecision.response.trim().length > 0);
+
+      if (gate.autoExecuted && !hasExecutablePayload) {
+        log.warn("Auto-execution gated action lacks required payload; escalating to human review", {
+          action: proposedDecision.action,
+        });
+        gate = {
+          ...gate,
+          autoExecuted: false,
+          requiresHumanReview: true,
+          reason: `Action ${proposedDecision.action} requires non-empty response to execute`,
+        };
+      }
+
       const decisionId = generateId("dec");
       const executionState = gate.autoExecuted
         ? "EXECUTING"
@@ -448,7 +486,7 @@ export class SupervisionPipeline {
             : "DRY_RUN_COMPLETED";
 
       // 8. Persist Decision Record (with AI usage & cost accounting)
-      await this.decisionRepo.create({
+      const savedDecision = await this.decisionRepo.create({
         id: decisionId,
         sessionId: session.id,
         activityId: activity.id,
@@ -477,6 +515,28 @@ export class SupervisionPipeline {
         repositoryKnowledgeIds: memoryContext?.repositoryKnowledgeIds ?? [],
       });
 
+      const canonicalDecisionId = savedDecision.id;
+      if (canonicalDecisionId !== decisionId) {
+        log.info("Concurrent decision insert conflict detected; using canonical existing decision", {
+          idempotencyKey,
+          canonicalDecisionId,
+        });
+        return {
+          decisionId: canonicalDecisionId,
+          action: savedDecision.action as DecisionAction,
+          executionGate: {
+            action: savedDecision.action as DecisionAction,
+            allowed: true,
+            requiresHumanReview: savedDecision.executionState === "AWAITING_APPROVAL",
+            blocked: savedDecision.executionState === "BLOCKED",
+            reason: "Idempotent replay",
+            autoExecuted: false,
+          },
+          executed: savedDecision.executionState === "EXECUTED",
+          requiresHumanReview: savedDecision.executionState === "AWAITING_APPROVAL",
+        };
+      }
+
       // 9. Record Audit Log
       await this.auditRepo.record({
         id: generateId("aud"),
@@ -486,7 +546,7 @@ export class SupervisionPipeline {
         targetType: "SESSION",
         targetId: session.id,
         sessionId: session.id,
-        decisionId,
+        decisionId: canonicalDecisionId,
         beforeState: { sessionState: session.state, activityId: activity.id },
         afterState: {
           executionGate: gate,
@@ -495,17 +555,12 @@ export class SupervisionPipeline {
         },
       });
 
-      // P1-semantic: reflect over this execution and admit durable lessons
-      // (best-effort, non-blocking). Outcome is derived from the execution gate.
-      if (this.semanticMemory) {
-        const outcome =
-          gate.autoExecuted && !gate.requiresHumanReview && !gate.blocked
-            ? "success"
-            : gate.blocked
-              ? "failure"
-              : "partial";
+      // P1-semantic: reflect over non-auto-executing decisions (reviews, blocks, dry runs).
+      // For auto-execution, reflection runs after the mutation's actual observed outcome.
+      if (this.semanticMemory && !gate.autoExecuted) {
+        const outcome = gate.blocked ? "failure" : "partial";
         await this.semanticMemory.reflectAndAdmit({
-          executionId: decisionId,
+          executionId: canonicalDecisionId,
           repositoryId: session.repository,
           task:
             session.prompt ||
@@ -523,7 +578,7 @@ export class SupervisionPipeline {
       if (gate.requiresHumanReview) {
         await this.approvalRepo.create({
           id: generateId("appr"),
-          decisionId,
+          decisionId: canonicalDecisionId,
           sessionId: session.id,
           status: "PENDING",
           action: proposedDecision.action,
@@ -531,9 +586,9 @@ export class SupervisionPipeline {
         });
 
         await this.sessionRepo.updateState(session.id, session.state, "AWAITING_APPROVAL");
-        log.info("Decision placed in Human Approval Queue", { decisionId, risk: effectiveRisk });
+        log.info("Decision placed in Human Approval Queue", { decisionId: canonicalDecisionId, risk: effectiveRisk });
         return {
-          decisionId,
+          decisionId: canonicalDecisionId,
           action: proposedDecision.action,
           executionGate: gate,
           executed: false,
@@ -541,8 +596,8 @@ export class SupervisionPipeline {
         };
       }
 
-      // 11. Handle Auto-Execution (If allowed by gate)
-      if (gate.autoExecuted && proposedDecision.response) {
+      // 11. Handle Auto-Execution (If allowed by gate and executable payload present)
+      if (gate.autoExecuted && hasExecutablePayload) {
         // H3: durable execution attempt. Insert + claim the attempt BEFORE any
         // external mutation so a crash mid-effect leaves a recoverable record.
         // The SAME idempotencyKey (clientToken) is reused on every retry of this
@@ -550,12 +605,12 @@ export class SupervisionPipeline {
         // re-driving with the same token cannot double-apply the effect.
         let attemptId: string | null = null;
         try {
-          const priorAttempts = await this.executionAttemptRepo.listByDecision(decisionId);
+          const priorAttempts = await this.executionAttemptRepo.listByDecision(canonicalDecisionId);
           const attemptNumber = priorAttempts.length + 1;
           attemptId = generateId("exec");
           await this.executionAttemptRepo.create({
             id: attemptId,
-            decisionId,
+            decisionId: canonicalDecisionId,
             attemptNumber,
             clientToken: idempotencyKey,
           });
@@ -563,7 +618,7 @@ export class SupervisionPipeline {
           await this.executionAttemptRepo.markExecuting(attemptId, this.workerId);
 
           log.info("Auto-executing decision against Google Jules API...", {
-            decisionId,
+            decisionId: canonicalDecisionId,
             action: proposedDecision.action,
             attemptId,
             attemptNumber,
@@ -598,12 +653,12 @@ export class SupervisionPipeline {
           if (proposedDecision.action === "APPROVE_PLAN") {
             await this.julesClient.approvePlan(session.id, {
               approved: true,
-              feedback: proposedDecision.response,
+              feedback: proposedDecision.response ?? undefined,
               clientToken: idempotencyKey,
             });
           } else if (proposedDecision.action === "RESPOND") {
             await this.julesClient.sendMessage(session.id, {
-              message: proposedDecision.response,
+              message: proposedDecision.response ?? "",
               clientToken: idempotencyKey,
             });
           } else if (proposedDecision.action === "REQUEST_CHANGES") {
@@ -645,7 +700,7 @@ export class SupervisionPipeline {
             await this.correctionRepo.record({
               id: generateId("corr"),
               sessionId: session.id,
-              decisionId,
+              decisionId: canonicalDecisionId,
               fingerprint,
               instruction: correctionInstruction,
             });
@@ -659,16 +714,32 @@ export class SupervisionPipeline {
 
           // H3: the external effect resolved definitively — the attempt SUCCEEDED.
           await this.executionAttemptRepo.markSucceeded(attemptId);
-          await this.decisionRepo.markExecuted(decisionId, "EXECUTED");
+          await this.decisionRepo.markExecuted(canonicalDecisionId, "EXECUTED");
           await this.sessionRepo.updateState(session.id, "IN_PROGRESS", "AUTO_EXECUTED");
           metrics.incrementAutoExecution();
 
+          if (this.semanticMemory) {
+            await this.semanticMemory.reflectAndAdmit({
+              executionId: canonicalDecisionId,
+              repositoryId: session.repository,
+              task:
+                session.prompt ||
+                activity.content ||
+                (activity.plan ? "evaluate plan" : "evaluate activity"),
+              affectedPaths: activity.patch?.filesChanged,
+              actions: recentActivities.slice(-4).map((a) => a.type),
+              result: proposedDecision.response ?? "",
+              outcome: "success",
+              toolsUsed: ["jules-api", "supervisor-ai"],
+            }).catch(() => {});
+          }
+
           log.info("Decision successfully executed against Jules API", {
-            decisionId,
+            decisionId: canonicalDecisionId,
             attemptId,
           });
           return {
-            decisionId,
+            decisionId: canonicalDecisionId,
             action: proposedDecision.action,
             executionGate: gate,
             executed: true,
@@ -683,7 +754,7 @@ export class SupervisionPipeline {
           log.error(
             `Failed to execute decision against Jules API (${classification.category})`,
             err,
-            { decisionId, attemptId },
+            { decisionId: canonicalDecisionId, attemptId },
           );
           if (attemptId) {
             if (classification.category === "PERMANENT") {
@@ -698,13 +769,30 @@ export class SupervisionPipeline {
               );
             }
           }
-          await this.decisionRepo.markExecuted(decisionId, "EXECUTION_FAILED", message);
+          await this.decisionRepo.markExecuted(canonicalDecisionId, "EXECUTION_FAILED", message);
+
+          if (this.semanticMemory) {
+            await this.semanticMemory.reflectAndAdmit({
+              executionId: canonicalDecisionId,
+              repositoryId: session.repository,
+              task:
+                session.prompt ||
+                activity.content ||
+                (activity.plan ? "evaluate plan" : "evaluate activity"),
+              affectedPaths: activity.patch?.filesChanged,
+              actions: recentActivities.slice(-4).map((a) => a.type),
+              result: proposedDecision.response ?? "",
+              outcome: "failure",
+              toolsUsed: ["jules-api", "supervisor-ai"],
+            }).catch(() => {});
+          }
+
           throw err;
         }
       }
 
       return {
-        decisionId,
+        decisionId: canonicalDecisionId,
         action: proposedDecision.action,
         executionGate: gate,
         executed: false,

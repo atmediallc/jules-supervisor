@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, lte, sql } from "drizzle-orm";
 import { Database } from "../client.js";
 import {
   aiMemories,
@@ -89,15 +89,14 @@ export class AiMemoryRepository {
   }
 
   public async list(query: MemoryListQuery): Promise<AiMemorySelect[]> {
-    const conditions = [eq(aiMemories.tenantId, query.tenantId)];
-    if (query.projectId) conditions.push(eq(aiMemories.projectId, query.projectId));
-    if (query.repositoryId) conditions.push(eq(aiMemories.repositoryId, query.repositoryId));
+    const conditions = [];
+    if (query.tenantId && query.tenantId !== "*") conditions.push(eq(aiMemories.tenantId, query.tenantId));
+    if (query.projectId && query.projectId !== "*") conditions.push(eq(aiMemories.projectId, query.projectId));
+    if (query.repositoryId && query.repositoryId !== "*") conditions.push(eq(aiMemories.repositoryId, query.repositoryId));
     if (query.memoryType) conditions.push(eq(aiMemories.memoryType, query.memoryType));
     if (query.status) conditions.push(eq(aiMemories.status, query.status));
-    return this.db
-      .select()
-      .from(aiMemories)
-      .where(and(...conditions))
+    const base = this.db.select().from(aiMemories);
+    return (conditions.length > 0 ? base.where(and(...conditions)) : base)
       .orderBy(desc(aiMemories.updatedAt))
       .limit(query.limit ?? 50)
       .offset(query.offset ?? 0);
@@ -111,10 +110,10 @@ export class AiMemoryRepository {
     repositoryId: string,
     opts: { limit?: number; memoryType?: MemoryType } = {},
   ): Promise<AiMemorySelect[]> {
-    const conditions = [
-      eq(aiMemories.repositoryId, repositoryId),
-      eq(aiMemories.status, "active"),
-    ];
+    const conditions = [eq(aiMemories.status, "active")];
+    if (repositoryId && repositoryId !== "*") {
+      conditions.push(eq(aiMemories.repositoryId, repositoryId));
+    }
     if (opts.memoryType) conditions.push(eq(aiMemories.memoryType, opts.memoryType));
     return this.db
       .select()
@@ -273,16 +272,17 @@ export class AiMemoryRepository {
     limit = 100,
   ): Promise<AiMemorySelect[]> {
     const cutoff = new Date(Date.now() - staleDays * 86_400_000);
+    const conditions = [
+      eq(aiMemories.status, "active"),
+      sql`COALESCE(${aiMemories.lastValidatedAt}, ${aiMemories.createdAt}) < ${cutoff}`,
+    ];
+    if (repositoryId && repositoryId !== "*") {
+      conditions.push(eq(aiMemories.repositoryId, repositoryId));
+    }
     return this.db
       .select()
       .from(aiMemories)
-      .where(
-        and(
-          eq(aiMemories.repositoryId, repositoryId),
-          eq(aiMemories.status, "active"),
-          sql`(${aiMemories.lastValidatedAt} IS NULL OR ${aiMemories.lastValidatedAt} < ${cutoff})`,
-        ),
-      )
+      .where(and(...conditions))
       .limit(limit);
   }
 

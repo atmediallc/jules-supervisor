@@ -154,8 +154,15 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
           });
 
           // Corrections (rejections) count against the session autonomy budget.
-          if (parsed.data.status === "REJECTED") {
-            await txBudgetRepo.incrementCorrections(u.sessionId);
+          if (parsed.data.status === "REJECTED" || parsed.data.status === "CANCELLED") {
+            await txDecisionRepo.markExecuted(
+              u.decisionId,
+              "BLOCKED",
+              parsed.data.comment ?? `Human operator marked ${parsed.data.status}`,
+            );
+            if (parsed.data.status === "REJECTED") {
+              await txBudgetRepo.incrementCorrections(u.sessionId);
+            }
           }
         }
         return u;

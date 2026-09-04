@@ -153,7 +153,16 @@ export class RepositoryKnowledgeRepository {
       .select()
       .from(repositoryKnowledge)
       .where(and(...conditions))
-      .orderBy(repositoryKnowledge.trustLevel, desc(repositoryKnowledge.updatedAt))
+      .orderBy(
+        sql`CASE ${repositoryKnowledge.trustLevel}
+          WHEN 'REPOSITORY_AUTHORITATIVE' THEN 0
+          WHEN 'HUMAN_VERIFIED' THEN 1
+          WHEN 'SUPERVISOR_VERIFIED' THEN 2
+          WHEN 'INFERRED' THEN 3
+          ELSE 4
+        END`,
+        desc(repositoryKnowledge.updatedAt),
+      )
       .limit(query.limit ?? 50);
   }
 

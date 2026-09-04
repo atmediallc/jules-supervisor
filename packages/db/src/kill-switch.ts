@@ -73,6 +73,14 @@ export class KillSwitch {
     }
 
     const raw = rows?.value;
+    if (raw !== undefined && raw !== null && !VALID_STATES.has(raw)) {
+      return {
+        state: "SAFETY_LOCKED",
+        changedAt: new Date().toISOString(),
+        changedBy: "SYSTEM",
+        reason: `Fail-closed: unrecognized or corrupted safety state in database: ${raw}`,
+      };
+    }
     const state: SafetyState = raw && VALID_STATES.has(raw) ? (raw as SafetyState) : "RUNNING";
 
     let changedAt: string | null = null;

@@ -21,10 +21,10 @@
     "@jules/observability": "workspace:*",
     "@jules/policy": "workspace:*",
     "@jules/shared": "workspace:*",
-    "bullmq": "^5.41.6",
-    "ioredis": "^5.6.0",
+    "ioredis": "^6.0.0",
+    "bullmq": "^6.3.3",
     "prom-client": "^15.1.0",
-    "zod": "^3.24.2"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "^22.13.9",

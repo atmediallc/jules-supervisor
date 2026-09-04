@@ -132,23 +132,30 @@ describe("Real PostgreSQL 16 & Drizzle Schema Integration", () => {
     });
     expect(firstDecision).not.toBeNull();
 
-    // Second decision with exact same idempotency_key must be rejected by PostgreSQL unique constraint
-    await expect(
-      decisionRepo.create({
-        id: `dec_second_${Date.now()}`,
-        sessionId,
-        activityId,
-        idempotencyKey,
-        action: "RESPOND",
-        risk: "low",
-        confidence: 0.95,
-        reason: "Duplicate attempt",
-        provider: "openai",
-        model: "gpt-4o",
-        contextDigest: "b".repeat(64),
-        executionState: "DRY_RUN_COMPLETED",
-      }),
-    ).rejects.toThrow();
+    // Second decision with the exact same idempotency_key is a no-op: the
+    // PostgreSQL unique index is the backstop, and the repository converts the
+    // concurrent-duplicate/redelivery race into a graceful idempotent skip that
+    // returns the ORIGINAL decision (never a duplicate row, never a thrown error).
+    const duplicateDecision = await decisionRepo.create({
+      id: `dec_second_${Date.now()}`,
+      sessionId,
+      activityId,
+      idempotencyKey,
+      action: "RESPOND",
+      risk: "low",
+      confidence: 0.95,
+      reason: "Duplicate attempt",
+      provider: "openai",
+      model: "gpt-4o",
+      contextDigest: "b".repeat(64),
+      executionState: "DRY_RUN_COMPLETED",
+    });
+    // Dedup returns the pre-existing decision, not a newly inserted duplicate.
+    expect(duplicateDecision?.id).toBe(firstDecision.id);
+    // Only one row exists for this idempotency key (the unique index enforced it).
+    const byKey = await decisionRepo.findByIdempotencyKey(idempotencyKey);
+    expect(byKey).not.toBeNull();
+    expect(byKey?.id).toBe(firstDecision.id);
   });
 
   it("handles database transactions and rollbacks correctly on constraint violation", async () => {

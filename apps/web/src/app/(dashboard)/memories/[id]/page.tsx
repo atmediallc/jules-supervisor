@@ -44,7 +44,7 @@ export default async function MemoryDetailPage({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-white">{memory.title}</h2>
-          <p className="text-xs text-slate-500 font-mono mt-1">{memory.id}</p>
+          <p className="text-xs text-jules-300/80 font-mono mt-1">{memory.id}</p>
         </div>
         <div className="flex items-center gap-2">
           {memory.status !== "active" && (
@@ -60,7 +60,7 @@ export default async function MemoryDetailPage({
             >
               <button
                 type="submit"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-emerald-800 text-emerald-400 hover:bg-emerald-950/40 text-sm font-medium"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-emerald-800 text-emerald-400 hover:bg-emerald-950/40 text-sm font-medium transition-colors"
               >
                 <RotateCcw className="w-4 h-4" /> {t("reactivate")}
               </button>
@@ -78,7 +78,7 @@ export default async function MemoryDetailPage({
           >
             <button
               type="submit"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800 text-sm font-medium"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 text-slate-200 hover:bg-panel text-sm font-medium transition-colors"
             >
               <CheckCircle2 className="w-4 h-4" /> {t("mark_validated")}
             </button>
@@ -96,7 +96,7 @@ export default async function MemoryDetailPage({
             >
               <button
                 type="submit"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-rose-800 text-rose-400 hover:bg-rose-950/40 text-sm font-medium"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-rose-800 text-rose-400 hover:bg-rose-950/40 text-sm font-medium transition-colors"
               >
                 <Archive className="w-4 h-4" /> {t("archive")}
               </button>
@@ -108,30 +108,31 @@ export default async function MemoryDetailPage({
       {/* Core content */}
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 space-y-6">
-          <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800">
-            <div className="text-xs uppercase tracking-wider text-slate-500 mb-3">
+          <div className="relative overflow-hidden p-6 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10">
+            <div className="absolute -top-10 -right-10 w-32 h-32 bg-violet-600/5 blur-3xl rounded-full" />
+            <div className="relative text-xs uppercase tracking-wider text-slate-500 mb-3">
               {t("canonical_content")}
             </div>
-            <pre className="whitespace-pre-wrap font-sans text-sm text-slate-200 leading-relaxed">
+            <pre className="relative whitespace-pre-wrap font-sans text-sm text-slate-200 leading-relaxed">
               {memory.canonicalContent}
             </pre>
           </div>
 
-          <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800">
-            <div className="text-xs uppercase tracking-wider text-slate-500 mb-3">
+          <div className="relative overflow-hidden p-6 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10">
+            <div className="relative text-xs uppercase tracking-wider text-slate-500 mb-3">
               {t("summary")}
             </div>
-            <p className="text-sm text-slate-300">{memory.summary}</p>
+            <p className="relative text-sm text-slate-300">{memory.summary}</p>
           </div>
 
           {memory.tags.length > 0 && (
-            <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800">
-              <div className="text-xs uppercase tracking-wider text-slate-500 mb-3">{t("tags")}</div>
-              <div className="flex flex-wrap gap-2">
+            <div className="relative overflow-hidden p-6 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10">
+              <div className="relative text-xs uppercase tracking-wider text-slate-500 mb-3">{t("tags")}</div>
+              <div className="relative flex flex-wrap gap-2">
                 {memory.tags.map((t) => (
                   <span
                     key={t}
-                    className="px-2 py-1 rounded bg-slate-800 border border-slate-700 text-[11px] font-mono text-slate-300"
+                    className="px-2 py-1 rounded bg-abyss border border-white/10 text-[11px] font-mono text-slate-300"
                   >
                     {t}
                   </span>
@@ -142,7 +143,7 @@ export default async function MemoryDetailPage({
         </div>
 
         <div className="space-y-6">
-          <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-3 text-sm">
+          <div className="relative overflow-hidden p-6 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-3 text-sm">
             <div className="text-xs uppercase tracking-wider text-slate-500">{t("metadata")}</div>
             <MetaRow label={t("type")} value={memory.memoryType} />
             <MetaRow label={t("status")} value={memory.status} />
@@ -155,8 +156,8 @@ export default async function MemoryDetailPage({
             <MetaRow label={t("created")} value={formatDateTime(locale, memory.createdAt)} />
           </div>
 
-          <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-3 text-sm">
-            <div className="text-xs uppercase tracking-wider text-slate-500">{t("usage")}</div>
+          <div className="relative overflow-hidden p-6 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-3 text-sm">
+            <div className="relative text-xs uppercase tracking-wider text-slate-500">{t("usage")}</div>
             <MetaRow label={t("accesses")} value={String(memory.accessCount)} />
             <MetaRow label={t("successful_uses")} value={String(memory.successfulUseCount)} />
             <MetaRow label={t("negative_outcomes")} value={String(memory.negativeOutcomeCount)} />
@@ -170,24 +171,25 @@ export default async function MemoryDetailPage({
       </div>
 
       {/* Influence trail */}
-      <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-3">
-        <div className="text-xs uppercase tracking-wider text-slate-500">
+      <div className="relative overflow-hidden p-6 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-3">
+        <div className="absolute inset-0 grid-overlay opacity-30 pointer-events-none" />
+        <div className="relative text-xs uppercase tracking-wider text-slate-500">
           {t("influence_trail", { count: String(influences.length) })}
         </div>
         {influences.length === 0 ? (
-          <p className="text-sm text-slate-400">
+          <p className="relative text-sm text-slate-400">
             {t("no_executions_recalled")}
           </p>
         ) : (
-          <div className="space-y-2 font-mono text-xs">
+          <div className="relative space-y-2 font-mono text-xs">
             {influences.map((inf) => (
               <div
                 key={inf.id}
-                className="p-3 bg-slate-950/70 rounded-lg border border-slate-800/80 flex items-start justify-between gap-4"
+                className="p-3 bg-abyss/70 rounded-lg border border-white/5 flex items-start justify-between gap-4"
               >
                 <div className="space-y-1">
                   <div className="text-slate-200">
-                    exec: <span className="text-indigo-400">{inf.executionId}</span>
+                    exec: <span className="text-jules-300">{inf.executionId}</span>
                     <span className="text-slate-500"> · rank {inf.rank}</span>
                     <span className="text-slate-500">
                       {" "}· score {inf.retrievalScore.toFixed(3)}

@@ -64,16 +64,19 @@ export default function ApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">{t("title")}</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            {t("description")}
-          </p>
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-panel via-abyss-soft to-abyss p-6">
+        <div className="absolute -top-16 -right-16 w-56 h-56 bg-amber-500/10 blur-3xl rounded-full" />
+        <div className="relative flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-white">{t("title")}</h2>
+            <p className="text-sm text-slate-400 mt-1">
+              {t("description")}
+            </p>
+          </div>
+          <span className="px-3 py-1 bg-amber-950 text-amber-300 border border-amber-800 text-xs font-mono rounded-md">
+            {t("pending_actions", { count: String(approvals.length) })}
+          </span>
         </div>
-        <span className="px-3 py-1 bg-amber-950 text-amber-300 border border-amber-800 text-xs font-mono rounded">
-          {t("pending_actions", { count: String(approvals.length) })}
-        </span>
       </div>
 
       {actionMessage && (
@@ -83,7 +86,7 @@ export default function ApprovalsPage() {
       )}
 
       {approvals.length === 0 ? (
-        <div className="p-12 text-center bg-slate-900/40 rounded-xl border border-slate-800 space-y-2">
+        <div className="p-12 text-center bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-2">
           <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
           <h3 className="text-base font-semibold text-white">{t("queue_empty")}</h3>
           <p className="text-xs text-slate-400">{t("queue_empty_description")}</p>
@@ -93,13 +96,14 @@ export default function ApprovalsPage() {
           {approvals.map((item) => (
             <div
               key={item.id}
-              className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-4"
+              className="relative overflow-hidden p-6 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-4 hover:border-amber-500/30 transition-colors"
             >
-              <div className="flex items-start justify-between">
+              <div className="absolute -top-10 -right-10 w-40 h-40 bg-amber-500/5 blur-3xl rounded-full" />
+              <div className="relative flex items-start justify-between">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-bold text-amber-400">{item.id}</span>
-                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-200">
+                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-abyss text-slate-200 border border-white/10">
                       {t("session")}: {item.sessionId}
                     </span>
                     <span
@@ -113,7 +117,7 @@ export default function ApprovalsPage() {
                     >
                       {item.risk.toUpperCase()} {t("risk")}
                     </span>
-                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
+                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-jules-950 text-jules-300 border border-jules-800">
                       {t("action")}: {item.action}
                     </span>
                   </div>
@@ -125,7 +129,7 @@ export default function ApprovalsPage() {
               </div>
 
               {/* Proposed Response Box */}
-              <div className="p-4 bg-slate-950 rounded-lg border border-slate-800">
+              <div className="relative p-4 bg-abyss rounded-xl border border-white/10">
                 <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span>{t("proposed_response")}</span>
                   {editingId !== item.id && (
@@ -134,7 +138,7 @@ export default function ApprovalsPage() {
                         setEditingId(item.id);
                         setEditedText({ ...editedText, [item.id]: item.proposedResponse });
                       }}
-                      className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300"
+                      className="flex items-center gap-1 text-[11px] text-jules-300 hover:text-jules-200"
                     >
                       <Edit3 className="w-3 h-3" /> {t("edit_response")}
                     </button>
@@ -146,7 +150,7 @@ export default function ApprovalsPage() {
                     <textarea
                       value={editedText[item.id] ?? item.proposedResponse}
                       onChange={(e) => setEditedText({ ...editedText, [item.id]: e.target.value })}
-                      className="w-full h-24 p-3 bg-slate-900 text-xs font-mono text-white rounded border border-indigo-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full h-24 p-3 bg-abyss-soft text-xs font-mono text-white rounded border border-jules-700 focus:outline-none focus:ring-1 focus:ring-jules-500"
                     />
                     <div className="flex justify-end gap-2">
                       <button
@@ -158,7 +162,7 @@ export default function ApprovalsPage() {
                       <button
                         onClick={() => handleAction(item.id, "EDITED")}
                         disabled={submittingId === item.id}
-                        className="px-3 py-1 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded font-medium"
+                        className="px-3 py-1 text-xs bg-gradient-to-r from-jules-600 to-cyber-600 hover:from-jules-500 hover:to-cyber-500 text-white rounded font-medium"
                       >
                         {t("save_send_edited")}
                       </button>
@@ -173,7 +177,7 @@ export default function ApprovalsPage() {
 
               {/* Action Buttons */}
               {editingId !== item.id && (
-                <div className="flex items-center justify-end gap-3 pt-2">
+                <div className="relative flex items-center justify-end gap-3 pt-2">
                   <button
                     onClick={() => handleAction(item.id, "REJECTED")}
                     disabled={submittingId === item.id}
@@ -186,7 +190,7 @@ export default function ApprovalsPage() {
                   <button
                     onClick={() => handleAction(item.id, "APPROVED")}
                     disabled={submittingId === item.id}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold tracking-wide disabled:opacity-50 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold tracking-wide disabled:opacity-50 transition-all shadow-[0_8px_20px_-8px_rgba(16,185,129,0.7)]"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     {t("approve_dispatch")}

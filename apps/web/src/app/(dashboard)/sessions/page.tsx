@@ -36,12 +36,15 @@ export default async function SessionsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">{t("title")}</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            {t("description")}
-          </p>
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-panel via-abyss-soft to-abyss p-6">
+        <div className="absolute -top-16 -right-16 w-56 h-56 bg-jules-600/10 blur-3xl rounded-full" />
+        <div className="relative flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-white">{t("title")}</h2>
+            <p className="text-sm text-slate-400 mt-1">
+              {t("description")}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -49,13 +52,14 @@ export default async function SessionsPage() {
         {rows.map((session) => (
           <div
             key={session.id}
-            className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-4"
+            className="relative overflow-hidden p-6 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-4 hover:border-jules-500/30 transition-colors"
           >
-            <div className="flex items-start justify-between">
+            <div className="absolute -top-10 -right-10 w-40 h-40 bg-jules-600/5 blur-3xl rounded-full" />
+            <div className="relative flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-3">
-                  <span className="font-mono text-sm font-bold text-indigo-400">{session.id}</span>
-                  <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-200 font-mono">
+                  <span className="font-mono text-sm font-bold text-jules-300">{session.id}</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-abyss text-slate-200 font-mono border border-white/10">
                     {session.repository} ({session.branch})
                   </span>
                   <span
@@ -79,7 +83,7 @@ export default async function SessionsPage() {
             </div>
 
             {/* Activities */}
-            <div className="mt-4 pt-4 border-t border-slate-800/80">
+            <div className="relative mt-4 pt-4 border-t border-white/5">
               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                 {t("recent_activities")}
               </h4>
@@ -87,10 +91,10 @@ export default async function SessionsPage() {
                 {session.activities.map((act) => (
                   <div
                     key={act.id}
-                    className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/60 flex items-start justify-between"
+                    className="p-3 bg-abyss/70 rounded-lg border border-white/5 flex items-start justify-between"
                   >
                     <div>
-                      <span className="text-xs font-mono text-indigo-300">[{act.type}]</span>
+                      <span className="text-xs font-mono text-jules-300">[{act.type}]</span>
                       <p className="text-xs text-slate-300 mt-1 whitespace-pre-wrap font-mono">
                         {act.content}
                       </p>
@@ -108,7 +112,7 @@ export default async function SessionsPage() {
           </div>
         ))}
         {rows.length === 0 && (
-          <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 text-sm text-slate-400">
+          <div className="p-6 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 text-sm text-slate-400">
             {t("no_sessions")}
           </div>
         )}

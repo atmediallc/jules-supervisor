@@ -26,26 +26,30 @@ export default async function AuditPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-white">{t("title")}</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          {t("description")}
-        </p>
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-panel via-abyss-soft to-abyss p-6">
+        <div className="absolute -top-16 -right-16 w-56 h-56 bg-jules-600/10 blur-3xl rounded-full" />
+        <div className="relative">
+          <h2 className="text-2xl font-bold tracking-tight text-white">{t("title")}</h2>
+          <p className="text-sm text-slate-400 mt-1">
+            {t("description")}
+          </p>
+        </div>
       </div>
 
-      <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-4">
-        <div className="space-y-3 font-mono text-xs">
+      <div className="relative overflow-hidden p-6 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-4">
+        <div className="absolute inset-0 grid-overlay opacity-30 pointer-events-none" />
+        <div className="relative space-y-3 font-mono text-xs">
           {auditLogs.map((log) => (
             <div
               key={log.id}
-              className="p-3 bg-slate-950/70 rounded-lg border border-slate-800/80 flex items-start justify-between"
+              className="p-3 bg-abyss/70 rounded-lg border border-white/5 flex items-start justify-between"
             >
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-indigo-400 font-bold">{log.id}</span>
+                  <span className="text-jules-300 font-bold">{log.id}</span>
                   <span className="text-slate-200">[{log.action}]</span>
                   <span className="text-slate-400">{tCommon("target")}: {log.targetId}</span>
-                  <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">
+                  <span className="px-1.5 py-0.5 rounded bg-panel text-[10px] text-slate-300 border border-white/5">
                     {tCommon("actor")}: {log.actor} ({log.actorType})
                   </span>
                 </div>

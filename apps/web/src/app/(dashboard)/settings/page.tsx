@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
+import AdminCredentialManager from "@/components/admin-credential-manager";
 import {
   Sliders,
   Save,
@@ -193,32 +194,35 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">
-            {t("title")}
-          </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            {t("description")}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={fetchSettings}
-            disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            {tCommon("refresh")}
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || changedCount === 0}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Save className="w-3.5 h-3.5" />
-            {saving ? t("saving") : `${t("save_changes")}${changedCount > 0 ? ` (${changedCount})` : ""}`}
-          </button>
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-panel via-abyss-soft to-abyss p-6">
+        <div className="absolute -top-16 -right-16 w-56 h-56 bg-jules-600/10 blur-3xl rounded-full" />
+        <div className="relative flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-white">
+              {t("title")}
+            </h2>
+            <p className="text-sm text-slate-400 mt-1">
+              {t("description")}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={fetchSettings}
+              disabled={loading}
+              className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-300 bg-abyss hover:bg-panel border border-white/10 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              {tCommon("refresh")}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || changedCount === 0}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-jules-600 to-cyber-600 hover:from-jules-500 hover:to-cyber-500 rounded-lg transition-all shadow-[0_8px_24px_-8px_rgba(59,130,246,0.8)] disabled:saturate-[0.55] disabled:cursor-not-allowed disabled:shadow-none"
+            >
+              <Save className="w-3.5 h-3.5" />
+              {saving ? t("saving") : `${t("save_changes")}${changedCount > 0 ? ` (${changedCount})` : ""}`}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -227,8 +231,8 @@ export default function SettingsPage() {
         <div
           className={`p-3 rounded-lg border text-xs font-mono flex items-center gap-2 ${
             message.type === "success"
-              ? "bg-emerald-950/80 border-emerald-800 text-emerald-300"
-              : "bg-rose-950/80 border-rose-800 text-rose-300"
+              ? "bg-emerald-950/80 border-emerald-800 text-emerald-300 shadow-[0_0_16px_-6px_rgba(16,185,129,0.5)]"
+              : "bg-rose-950/80 border-rose-800 text-rose-300 shadow-[0_0_16px_-6px_rgba(239,68,68,0.5)]"
           }`}
         >
           {message.type === "success" ? (
@@ -240,10 +244,13 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* Admin Credentials & Master Key */}
+      <AdminCredentialManager />
+
       {/* Loading State */}
       {loading && settings.length === 0 ? (
-        <div className="p-12 text-center bg-slate-900/40 rounded-xl border border-slate-800">
-          <RefreshCw className="w-6 h-6 text-slate-500 mx-auto animate-spin" />
+        <div className="p-12 text-center bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10">
+          <RefreshCw className="w-6 h-6 text-jules-400 mx-auto animate-spin" />
           <p className="text-sm text-slate-400 mt-3">{t("loading_settings")}</p>
         </div>
       ) : (
@@ -257,15 +264,17 @@ export default function SettingsPage() {
           return (
             <div
               key={cat}
-              className="bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden"
+              className="relative overflow-hidden bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10"
             >
               {/* Category Header */}
               <button
                 onClick={() => toggleCategory(cat)}
-                className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-800/40 transition-colors"
+                className="w-full flex items-center justify-between px-6 py-4 hover:bg-white/[0.03] transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <Icon className={`w-5 h-5 ${meta.color}`} />
+                  <span className={`p-1.5 rounded-lg bg-abyss border border-white/5 ${meta.color}`}>
+                    <Icon className="w-4 h-4" />
+                  </span>
                   <span className="text-sm font-bold text-white">{t(`categories.${cat}`)}</span>
                   <span className="text-[10px] text-slate-500 font-mono">
                     {tCommon("setting_count", { count: items.length })}
@@ -280,17 +289,22 @@ export default function SettingsPage() {
 
               {/* Settings List */}
               {!collapsed && (
-                <div className="divide-y divide-slate-800/80">
+                <div className="divide-y divide-white/5">
                   {items.map((item) => {
                     const isEditing = item.key in edits;
-                    const displayValue = isEditing ? edits[item.key] : item.value;
+                    // Revealed secrets show the real value (rawValue) instead of the masked one.
+                    const displayValue = isEditing
+                      ? edits[item.key]
+                      : item.isSecret && revealedSecrets.has(item.key)
+                        ? (item.rawValue ?? item.value)
+                        : item.value;
                     const badge = SOURCE_BADGE[item.source];
 
                     return (
                       <div
                         key={item.key}
                         className={`px-6 py-4 flex items-center gap-4 transition-colors ${
-                          isEditing ? "bg-indigo-950/20" : ""
+                          isEditing ? "bg-jules-500/[0.06]" : ""
                         }`}
                       >
                         {/* Label & Description */}
@@ -325,12 +339,12 @@ export default function SettingsPage() {
                           {item.isSecret && !revealedSecrets.has(item.key) ? (
                             // Secret: show masked + reveal toggle
                             <>
-                              <span className="font-mono text-xs text-indigo-300 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 min-w-40 text-center">
+                              <span className="font-mono text-xs text-jules-300 bg-abyss px-3 py-1.5 rounded-lg border border-white/10 min-w-40 text-center">
                                 {displayValue}
                               </span>
                               <button
                                 onClick={() => toggleSecretReveal(item.key)}
-                                className="p-1.5 text-slate-500 hover:text-slate-300 transition-colors"
+                                className="p-1.5 text-slate-500 hover:text-jules-300 transition-colors"
                                 title={t("reveal_secret")}
                               >
                                 <Eye className="w-3.5 h-3.5" />
@@ -345,12 +359,12 @@ export default function SettingsPage() {
                                 onChange={(e) =>
                                   setEdits((prev) => ({ ...prev, [item.key]: e.target.value }))
                                 }
-                                className="font-mono text-xs text-indigo-300 bg-slate-950 px-3 py-1.5 rounded-lg border border-indigo-800 min-w-50 focus:outline-none focus:border-indigo-500"
+                                className="font-mono text-xs text-jules-300 bg-abyss px-3 py-1.5 rounded-lg border border-jules-800 min-w-50 focus:outline-none focus:border-jules-500"
                                 placeholder={t("enter_api_key")}
                               />
                               <button
                                 onClick={() => toggleSecretReveal(item.key)}
-                                className="p-1.5 text-slate-500 hover:text-slate-300 transition-colors"
+                                className="p-1.5 text-slate-500 hover:text-jules-300 transition-colors"
                                 title={t("hide_secret")}
                               >
                                 <EyeOff className="w-3.5 h-3.5" />
@@ -363,7 +377,7 @@ export default function SettingsPage() {
                               onChange={(e) =>
                                 setEdits((prev) => ({ ...prev, [item.key]: e.target.value }))
                               }
-                              className="font-mono text-xs text-indigo-300 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer"
+                              className="font-mono text-xs text-jules-300 bg-abyss px-3 py-1.5 rounded-lg border border-white/10 focus:outline-none focus:border-jules-500 appearance-none cursor-pointer"
                             >
                               {["DISABLED", "DRY_RUN", "ASSISTED", "AUTO_RESPOND", "FULL_AUTO"].map(
                                 (opt) => (
@@ -379,7 +393,7 @@ export default function SettingsPage() {
                               onChange={(e) =>
                                 setEdits((prev) => ({ ...prev, [item.key]: e.target.value }))
                               }
-                              className="font-mono text-xs text-indigo-300 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer"
+                              className="font-mono text-xs text-jules-300 bg-abyss px-3 py-1.5 rounded-lg border border-white/10 focus:outline-none focus:border-jules-500 appearance-none cursor-pointer"
                             >
                               {["endpoint", "omniroute", "mock"].map((opt) => (
                                 <option key={opt} value={opt}>
@@ -399,7 +413,7 @@ export default function SettingsPage() {
                                 onChange={(e) =>
                                   setEdits((prev) => ({ ...prev, [item.key]: e.target.value }))
                                 }
-                                className="font-mono text-xs text-indigo-300 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 min-w-45 focus:outline-none focus:border-indigo-500"
+                                className="font-mono text-xs text-jules-300 bg-abyss px-3 py-1.5 rounded-lg border border-white/10 min-w-45 focus:outline-none focus:border-jules-500"
                                 placeholder={modelsLoading ? t("loading_models") : t("search_model")}
                               />
                               {!modelsLoading && availableModels.length > 0 && (
@@ -417,7 +431,7 @@ export default function SettingsPage() {
                               onChange={(e) =>
                                 setEdits((prev) => ({ ...prev, [item.key]: e.target.value }))
                               }
-                              className="font-mono text-xs text-indigo-300 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer"
+                              className="font-mono text-xs text-jules-300 bg-abyss px-3 py-1.5 rounded-lg border border-white/10 focus:outline-none focus:border-jules-500 appearance-none cursor-pointer"
                             >
                               <option value="true">true</option>
                               <option value="false">false</option>
@@ -430,7 +444,7 @@ export default function SettingsPage() {
                               onChange={(e) =>
                                 setEdits((prev) => ({ ...prev, [item.key]: e.target.value }))
                               }
-                              className="font-mono text-xs text-indigo-300 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 min-w-45 focus:outline-none focus:border-indigo-500"
+                              className="font-mono text-xs text-jules-300 bg-abyss px-3 py-1.5 rounded-lg border border-white/10 min-w-45 focus:outline-none focus:border-jules-500"
                             />
                           )}
                         </div>

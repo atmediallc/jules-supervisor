@@ -2,6 +2,10 @@
   "common": {
     "operational": "OPERATIVO",
     "live": "En vivo",
+    "ai_label": "IA",
+    "data_label": "DATOS",
+    "online": "EN LÍNEA",
+    "offline": "SIN CONEXIÓN",
     "dry_run": "PRUEBA",
     "enforced": "ACTIVO",
     "mode": "Modo",
@@ -202,6 +206,41 @@
       "database": "Override DB",
       "environment": "ENV",
       "default": "Predeterminado"
+    },
+    "admin_credentials": {
+      "title": "Credenciales Admin y Clave Maestra",
+      "configured_badge": "CONFIGURADA",
+      "absent_badge": "AUSENTE",
+      "change_key": "Cambiar Clave",
+      "create_key": "Crear Clave Maestra",
+      "absent_description": "No hay clave maestra de administrador configurada.",
+      "absent_hint": "Cree una clave maestra fuerte para proteger las operaciones de administración.",
+      "source_label": "Fuente",
+      "subtitle_configured": "Clave maestra activa — protege las operaciones de administración",
+      "subtitle_absent": "No hay clave maestra configurada",
+      "confirm_remove": "¿Eliminar la clave maestra de administrador? Esta acción no se puede deshacer.",
+      "reveal_hint": "La clave se muestra en texto plano. Asegúrese de que nadie la esté viendo.",
+      "reveal": "Revelar",
+      "hide": "Ocultar",
+      "remove_key": "Eliminar Clave",
+      "removing": "Eliminando…",
+      "new_key_label": "Nueva clave maestra",
+      "create_key_label": "Clave maestra",
+      "generate_hint": "Generar una clave fuerte…",
+      "generate": "Generar",
+      "copy": "Copiar",
+      "saving": "Guardando…",
+      "save_key": "Guardar Clave Maestra",
+      "save_new": "Guardar Nueva Clave",
+      "cancel": "Cancelar",
+      "failed_to_save": "Error al guardar la clave maestra",
+      "saved_message": "Clave maestra de administrador guardada exitosamente.",
+      "removed_message": "Clave maestra de administrador eliminada.",
+      "strength": {
+        "weak": "Débil",
+        "medium": "Media",
+        "strong": "Fuerte"
+      }
     }
   },
   "formatting": {

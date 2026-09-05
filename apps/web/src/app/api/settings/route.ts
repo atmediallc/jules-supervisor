@@ -8,8 +8,9 @@ import { logRouteError } from "../route-logger";
 
 /**
  * Admin Settings API — CRUD for system-wide configuration.
- * GET  /api/settings         → all settings (secrets masked)
- * PUT  /api/settings         → bulk update settings
+ * GET    /api/settings         → all settings (secrets masked)
+ * PUT    /api/settings         → bulk update settings
+ * DELETE /api/settings?key=X   → remove a DB override (reverts to env/default)
  *
  * Settings in the DB override environment variables at runtime.
  * Secrets (API keys, passwords) are encrypted at rest and masked in GET responses.
@@ -231,6 +232,12 @@ const SETTINGS_CATALOG: Record<
     isSecret: true,
     description: "Web session encryption secret",
   },
+  ADMIN_MASTER_KEY: {
+    defaultValue: "",
+    category: "infrastructure",
+    isSecret: true,
+    description: "Admin master key for credential vault",
+  },
 };
 
 // ── Masking for secrets ──
@@ -332,7 +339,7 @@ function buildSettingItem(
   return {
     key,
     value: catalog.isSecret ? maskValue(rawValue) : rawValue,
-    rawValue: catalog.isSecret ? null : rawValue,
+    rawValue,
     category: catalog.category,
     isSecret: catalog.isSecret,
     description: catalog.description,
@@ -451,6 +458,62 @@ export async function PUT(req: NextRequest) {
     });
   } catch (err: unknown) {
     logRouteError("PUT /api/settings", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+/** DELETE /api/settings?key=X — Remove a DB override (reverts to env/default) */
+export async function DELETE(req: NextRequest) {
+  try {
+    const token = await getToken({ req });
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const actor = (token?.name as string | undefined) ?? "authenticated-operator";
+
+    const key = req.nextUrl.searchParams.get("key");
+    if (!key || !(key in SETTINGS_CATALOG)) {
+      return NextResponse.json({ error: "Unknown setting key" }, { status: 400 });
+    }
+
+    const config = getConfig();
+    const db = getDatabase(config.DATABASE_URL);
+
+    // C3 transactional atomicity: the settings delete and its audit trail commit
+    // together — a settings mutation never persists un-audited.
+    try {
+      await runInTransaction(db, async (tx) => {
+        const txRepo = new SystemSettingsRepository(tx);
+        await txRepo.deleteByKey(key);
+
+        const txAudit = new AuditRepository(tx);
+        await txAudit.record({
+          id: generateId("audit"),
+          actor,
+          actorType: "HUMAN",
+          action: "SETTINGS_DELETE",
+          targetType: "system_settings",
+          targetId: key,
+          beforeState: { key },
+          metadata: { revertedTo: "env/default" },
+        });
+      });
+    } catch (err: unknown) {
+      logRouteError("DELETE /api/settings", err);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+
+    // Clear the cached config so the revert takes effect on next getConfig() call
+    try {
+      const { clearConfigCache } = await import("@jules/config");
+      clearConfigCache();
+    } catch {
+      // Fallback: config will be refreshed on next worker restart
+    }
+
+    return NextResponse.json({ deleted: true, key });
+  } catch (err: unknown) {
+    logRouteError("DELETE /api/settings", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

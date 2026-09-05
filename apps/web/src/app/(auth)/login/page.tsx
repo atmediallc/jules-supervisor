@@ -170,7 +170,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen bg-slate-950">
+    <div className="auth-screen relative flex min-h-screen bg-slate-950">
       {/* Ambient background */}
       <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -left-40 -top-40 h-[34rem] w-[34rem] rounded-full bg-indigo-600/10 blur-[120px]" />

@@ -1,7 +1,20 @@
 import type { Metadata } from "next";
 import { getLocale } from "next-intl/server";
+import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import Providers from "../i18n/Providers";
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const jetBrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Jules Supervisor — AI Orchestration & Governance Control Plane",
@@ -16,8 +29,17 @@ export default async function RootLayout({
   const locale = await getLocale();
 
   return (
-    <html lang={locale}>
-      <body className="bg-slate-950 text-slate-100 min-h-screen">
+    <html lang={locale} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("jules-theme");var d=t==="light"||t==="dark"?t:(window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark");document.documentElement.dataset.theme=d;}catch(e){document.documentElement.dataset.theme="dark";}})();`,
+          }}
+        />
+      </head>
+      <body
+        className={`${spaceGrotesk.variable} ${jetBrainsMono.variable} bg-abyss text-slate-100 min-h-screen antialiased`}
+      >
         <Providers locale={locale}>{children}</Providers>
       </body>
     </html>

@@ -2,6 +2,10 @@
   "common": {
     "operational": "OPERATIONAL",
     "live": "Live",
+    "ai_label": "AI",
+    "data_label": "DATA",
+    "online": "ONLINE",
+    "offline": "OFFLINE",
     "dry_run": "DRY_RUN",
     "enforced": "ENFORCED",
     "mode": "Mode",
@@ -202,6 +206,41 @@
       "database": "DB Override",
       "environment": "ENV",
       "default": "Default"
+    },
+    "admin_credentials": {
+      "title": "Admin Credentials & Master Key",
+      "configured_badge": "CONFIGURED",
+      "absent_badge": "ABSENT",
+      "change_key": "Change Key",
+      "create_key": "Create Master Key",
+      "absent_description": "No admin master key is set.",
+      "absent_hint": "Create a strong master key to protect admin operations.",
+      "source_label": "Source",
+      "subtitle_configured": "Master key active — protects admin operations",
+      "subtitle_absent": "No master key configured",
+      "confirm_remove": "Remove the admin master key? This cannot be undone.",
+      "reveal_hint": "The key is shown in plain text. Make sure no one is looking.",
+      "reveal": "Reveal",
+      "hide": "Hide",
+      "remove_key": "Remove Key",
+      "removing": "Removing…",
+      "new_key_label": "New master key",
+      "create_key_label": "Master key",
+      "generate_hint": "Generate a strong key…",
+      "generate": "Generate",
+      "copy": "Copy",
+      "saving": "Saving…",
+      "save_key": "Save Master Key",
+      "save_new": "Save New Key",
+      "cancel": "Cancel",
+      "failed_to_save": "Failed to save the master key",
+      "saved_message": "Admin master key saved successfully.",
+      "removed_message": "Admin master key removed.",
+      "strength": {
+        "weak": "Weak",
+        "medium": "Medium",
+        "strong": "Strong"
+      }
     }
   },
   "formatting": {

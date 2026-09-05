@@ -1,4 +1,4 @@
-import { Activity, Cpu, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
+import { Activity, Cpu, CheckCircle2, Clock, AlertTriangle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { getConfig } from "@jules/config";
 import {
@@ -62,86 +62,103 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
       {/* Top Banner */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">{t("title")}</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            {t("description")}
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <Link
-            href="/approvals"
-            className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-colors"
-          >
-            <AlertTriangle className="w-4 h-4" />
-            {t("pending_approvals", { count: String(stats.pendingHumanReviews) })}
-          </Link>
-          <Link
-            href="/sessions"
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-colors"
-          >
-            <Activity className="w-4 h-4" />
-            {t("view_sessions")}
-          </Link>
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-panel via-abyss-soft to-abyss p-6">
+        <div className="absolute -top-16 -right-16 w-56 h-56 bg-jules-600/10 blur-3xl rounded-full" />
+        <div className="absolute -bottom-20 left-1/3 w-48 h-48 bg-cyber-500/5 blur-3xl rounded-full" />
+        <div className="relative flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-white">
+              {t("title")}{" "}
+              <span className="bg-gradient-to-r from-jules-400 to-cyber-300 bg-clip-text text-transparent">
+                ▸
+              </span>
+            </h2>
+            <p className="text-sm text-slate-400 mt-1">
+              {t("description")}
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <Link
+              href="/approvals"
+              className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-colors"
+            >
+              <AlertTriangle className="w-4 h-4" />
+              {t("pending_approvals", { count: String(stats.pendingHumanReviews) })}
+            </Link>
+            <Link
+              href="/sessions"
+              className="flex items-center gap-2 bg-gradient-to-r from-jules-600 to-cyber-600 hover:from-jules-500 hover:to-cyber-500 text-white px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all shadow-[0_8px_24px_-8px_rgba(59,130,246,0.8)]"
+            >
+              <Activity className="w-4 h-4" />
+              {t("view_sessions")}
+            </Link>
+          </div>
         </div>
       </div>
 
       {/* KPI Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+        <div className="relative overflow-hidden p-5 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-2 group hover:border-jules-500/30 transition-colors">
+          <div className="absolute -top-8 -right-8 w-24 h-24 bg-jules-500/10 blur-2xl rounded-full" />
+          <div className="relative flex items-center justify-between text-xs text-slate-400 font-medium">
             <span>{t("active_jules_sessions")}</span>
-            <Activity className="w-4 h-4 text-indigo-400" />
+            <Activity className="w-4 h-4 text-jules-400" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">{formatNumber(locale, stats.activeSessions)}</div>
-          <div className="text-xs text-slate-400">
+          <div className="relative text-3xl font-bold text-white font-mono">{formatNumber(locale, stats.activeSessions)}</div>
+          <div className="relative text-xs text-slate-400">
             <span className="text-amber-400 font-medium">{formatNumber(locale, stats.awaitingFeedback)}</span> {t("awaiting_feedback", { count: String(stats.awaitingFeedback) })}
           </div>
         </div>
 
-        <div className="p-5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+        <div className="relative overflow-hidden p-5 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-2 group hover:border-amber-500/30 transition-colors">
+          <div className="absolute -top-8 -right-8 w-24 h-24 bg-amber-500/10 blur-2xl rounded-full" />
+          <div className="relative flex items-center justify-between text-xs text-slate-400 font-medium">
             <span>{t("pending_approvals_card")}</span>
             <CheckCircle2 className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-3xl font-bold text-amber-400 font-mono">
+          <div className="relative text-3xl font-bold text-amber-400 font-mono">
             {formatNumber(locale, stats.pendingHumanReviews)}
           </div>
-          <div className="text-xs text-slate-400">{t("requires_human_signoff")}</div>
+          <div className="relative text-xs text-slate-400">{t("requires_human_signoff")}</div>
         </div>
 
-        <div className="p-5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+        <div className="relative overflow-hidden p-5 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-2 group hover:border-emerald-500/30 transition-colors">
+          <div className="absolute -top-8 -right-8 w-24 h-24 bg-emerald-500/10 blur-2xl rounded-full" />
+          <div className="relative flex items-center justify-between text-xs text-slate-400 font-medium">
             <span>{t("decisions_today")}</span>
             <Cpu className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">{formatNumber(locale, stats.decisionsToday)}</div>
-          <div className="text-xs text-slate-400">
+          <div className="relative text-3xl font-bold text-white font-mono">{formatNumber(locale, stats.decisionsToday)}</div>
+          <div className="relative text-xs text-slate-400">
             <span className="text-emerald-400 font-medium">{formatNumber(locale, stats.autoExecuted)}</span> {t("auto_executed", { count: String(stats.autoExecuted) })}
           </div>
         </div>
 
-        <div className="p-5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+        <div className="relative overflow-hidden p-5 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-2 group hover:border-cyber-500/30 transition-colors">
+          <div className="absolute -top-8 -right-8 w-24 h-24 bg-cyber-500/10 blur-2xl rounded-full" />
+          <div className="relative flex items-center justify-between text-xs text-slate-400 font-medium">
             <span>{t("avg_decision_latency")}</span>
-            <Clock className="w-4 h-4 text-sky-400" />
+            <Clock className="w-4 h-4 text-cyber-400" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">{stats.avgLatencyMs}ms</div>
-          <div className="text-xs text-slate-400">{t("including_context_inference")}</div>
+          <div className="relative text-3xl font-bold text-white font-mono">{stats.avgLatencyMs}ms</div>
+          <div className="relative text-xs text-slate-400">{t("including_context_inference")}</div>
         </div>
       </div>
 
       {/* Grid: Active Sessions & Risk Distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Active Sessions List */}
-        <div className="lg:col-span-2 p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="relative lg:col-span-2 overflow-hidden p-6 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-4">
+          <div className="absolute inset-0 grid-overlay opacity-40 pointer-events-none" />
+          <div className="relative flex items-center justify-between">
             <h3 className="text-base font-semibold text-white">{t("active_sessions_list")}</h3>
-            <span className="text-xs text-slate-400 font-mono">{tCommon("live")}</span>
+            <span className="text-xs text-cyber-300 font-mono flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyber-400 animate-pulse" />
+              {tCommon("live")}
+            </span>
           </div>
 
-          <div className="space-y-3">
+          <div className="relative space-y-3">
             {allSessions
               .filter((s) => !["COMPLETED", "CANCELLED", "FAILED"].includes(s.state))
               .slice(0, 10)
@@ -155,11 +172,11 @@ export default async function DashboardPage() {
                 return (
                   <div
                     key={s.id}
-                    className="p-4 bg-slate-950/70 rounded-lg border border-slate-800/80 flex items-center justify-between"
+                    className="p-4 bg-abyss/70 rounded-xl border border-white/5 flex items-center justify-between hover:border-jules-500/30 transition-colors"
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-indigo-400">{s.id}</span>
+                        <span className="font-mono text-xs text-jules-300">{s.id}</span>
                         <span className="text-xs font-semibold text-white">
                           {s.repository} ({s.branch})
                         </span>
@@ -171,7 +188,7 @@ export default async function DashboardPage() {
                     </div>
                     <Link
                       href="/sessions"
-                      className="text-xs text-indigo-400 hover:text-indigo-300 font-medium px-3 py-1.5 rounded bg-slate-900 border border-slate-800"
+                      className="text-xs text-jules-300 hover:text-jules-200 font-medium px-3 py-1.5 rounded bg-abyss border border-white/10"
                     >
                       {tCommon("inspect")}
                     </Link>
@@ -186,17 +203,21 @@ export default async function DashboardPage() {
         </div>
 
         {/* Security & Risk Distribution */}
-        <div className="p-6 bg-slate-900/60 rounded-xl border border-slate-800 space-y-4">
-          <h3 className="text-base font-semibold text-white">{t("policy_risk_status")}</h3>
+        <div className="relative overflow-hidden p-6 bg-gradient-to-br from-panel to-abyss-soft rounded-2xl border border-white/10 space-y-4">
+          <div className="absolute -top-10 -right-10 w-32 h-32 bg-rose-500/5 blur-3xl rounded-full" />
+          <div className="relative flex items-center justify-between">
+            <h3 className="text-base font-semibold text-white">{t("policy_risk_status")}</h3>
+            <ShieldCheck className="w-4 h-4 text-jules-400" />
+          </div>
 
-          <div className="space-y-3 font-mono text-xs" id="risk-dist">
+          <div className="relative space-y-3 font-mono text-xs" id="risk-dist">
             <RiskStat label={t("low_risk_safe")} risk="low" db={db} />
             <RiskStat label={t("medium_risk_review")} risk="medium" db={db} />
             <RiskStat label={t("high_risk_escalated")} risk="high" db={db} />
             <RiskStat label={t("critical_vetoed")} risk="critical" db={db} />
           </div>
 
-          <div className="pt-2 border-t border-slate-800 text-xs text-slate-400">
+          <div className="relative pt-2 border-t border-white/5 text-xs text-slate-400">
             <p>
               {t("safety_gate_mode")}: <span className="text-amber-400 font-mono font-bold">{tCommon("dry_run")}</span>
             </p>
@@ -216,7 +237,7 @@ async function RiskStat({ label, risk, db }: { label: string; risk: string; db: 
   const count = row[0]?.count ?? 0;
   const color = risk === "low" ? "text-emerald-400" : risk === "medium" ? "text-amber-400" : risk === "high" ? "text-rose-400" : "text-red-500";
   return (
-    <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80 flex items-center justify-between">
+    <div className="p-3 bg-abyss/70 rounded-lg border border-white/5 flex items-center justify-between">
       <span className={color}>{label}</span>
       <span className="text-white font-bold">{count}</span>
     </div>

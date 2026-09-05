@@ -20,8 +20,8 @@ export default function LanguageSwitcher() {
           onClick={() => setLocale(loc)}
           className={`px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors ${
             locale === loc
-              ? "bg-indigo-600 text-white"
-              : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+              ? "bg-jules-600 text-white shadow-[0_0_10px_-2px_rgba(59,130,246,0.7)]"
+              : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
           }`}
         >
           {LABELS[loc]}
